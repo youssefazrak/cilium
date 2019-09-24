@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Blacklist more cilium logs which are high volume
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/120

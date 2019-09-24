@@ -1,0 +1,557 @@
+{{ $kubeSystemNamespace := "kube-system" -}}
+{{ $vaultCertFetchOutputDir := "/etc/vault-cert-fetch-output" -}}
+{{ $vaultCertFetchVersion := "2.36.0" -}}
+{{ $kubeconfigDir := "/var/conf" }}
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    rubix-app: cilium-agent
+    kubernetes.io/cluster-service: "true"
+  name: cilium-agent
+  namespace: {{ $kubeSystemNamespace }}
+spec:
+  selector:
+    matchLabels:
+      rubix-app: cilium-agent
+      kubernetes.io/cluster-service: "true"
+  template:
+    metadata:
+      name: cilium-agent
+      annotations:
+        ad.datadoghq.com/cilium-agent.check_names: |
+          [
+            "prometheus"
+          ]
+        ad.datadoghq.com/cilium-agent.init_configs: |
+          [{}]
+        ad.datadoghq.com/cilium-agent.instances: |
+          [
+            {
+              "prometheus_url": "http://localhost:9090/metrics",
+              "namespace": "cilium",
+              "tags": [
+                "product:cilium-agent"
+              ],
+              "metrics": [
+                "cilium_bpf_map_ops_total",
+                "cilium_controllers_failing",
+                "cilium_controllers_runs_total",
+                "cilium_datapath_conntrack_gc_duration_seconds",
+                "cilium_datapath_conntrack_gc_entries",
+                "cilium_datapath_conntrack_gc_key_fallbacks_total",
+                "cilium_datapath_conntrack_gc_runs_total",
+                "cilium_datapath_errors_total",
+                "cilium_drop_bytes_total",
+                "cilium_drop_count_total",
+                "cilium_forward_bytes_total",
+                "cilium_forward_count_total",
+                "cilium_endpoint_count",
+                "cilium_endpoint_state",
+                "cilium_endpoint_regenerations",
+                "cilium_fqdn_gc_deletions_total",
+                "cilium_identity_count",
+                "cilium_ip_addresses",
+                "cilium_ipam_events_total",
+                "cilium_k8s_client_api_calls_counter",
+                "cilium_kubernetes_events_received_total",
+                "cilium_kubernetes_events_total",
+                "cilium_nodes_all_datapath_validations_total",
+                "cilium_nodes_all_events_received_total",
+                "cilium_nodes_all_num",
+                "cilium_policy_count",
+                "cilium_policy_endpoint_enforcement_status",
+                "cilium_policy_import_errors",
+                "cilium_policy_l7_total",
+                "cilium_triggers_policy_update_total"
+              ],
+              "send_histograms_buckets": true
+            }
+          ]
+        com.palantir.rubix.pod/pod-key-pair-v2: "{}"
+        com.palantir.k8s-application/vault-cert-fetch-config: |
+          vault-address: https://vault.k8s.local:8200
+          vault-ca-cert: /etc/vault/ca.pem
+          auth-backend: {{ .CloudProvider }}
+          auth-role: k8s-cilium
+          certificates:
+          - common-name: ""
+            env-var-common-name: COMMON_NAME
+            output-dir: {{ $vaultCertFetchOutputDir }}
+            signer-type: nodecert
+            output-key-file-mode: 0644
+            output-chain-file-mode: 0644
+            ttl: 73h
+        com.palantir.rubix.config-content/kubeconfig: |
+          apiVersion: v1
+          clusters:
+          - cluster:
+              certificate-authority: {{ $vaultCertFetchOutputDir }}/ca.pem
+              server: https://kube-apiserver.kube-system.svc.cluster.local:6443
+            name: k8s
+          contexts:
+          - context:
+              cluster: k8s
+              user: cilium-agent
+            name: default
+          current-context: default
+          kind: Config
+          preferences: {}
+          users:
+          - name: cilium-agent
+            user:
+              client-certificate: {{ $vaultCertFetchOutputDir }}/cert.pem
+              client-key: {{ $vaultCertFetchOutputDir }}/key.pem
+        com.palantir.rubix.pod/sls-service-info-v2: >
+          {
+            "service-name": "cilium-agent",
+            "service-id": "cilium-agent",
+            "stack-name": "{{ $kubeSystemNamespace }}",
+            "stack-id": "{{ $kubeSystemNamespace }}",
+            "containers": {
+              "cilium-agent": {
+                "product-name": "cilium-agent",
+                "product-version": "{{ .ApplicationVersion }}"
+              },
+              "clean-cilium-state": {
+                "product-name": "cilium-agent",
+                "product-version": "{{ .ApplicationVersion }}"
+              },
+              "vault-cert-fetch": {
+                "product-name": "vault-cert-fetch",
+                "product-version": "{{ $vaultCertFetchVersion }}"
+              }
+            }
+          }
+        com.palantir.k8sapplications/hostports: |
+          {
+            "host-ports": [
+              9090
+            ]
+          }
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+        scheduler.alpha.kubernetes.io/tolerations: |
+          [
+            {
+              "key": "dedicated",
+              "operator": "Equal",
+              "value": "master",
+              "effect": "NoSchedule"
+            }
+          ]
+      labels:
+        rubix-app: cilium-agent
+        kubernetes.io/cluster-service: "true"
+    spec:
+      serviceAccount: cilium
+      tolerations:
+      - key: dedicated
+        value: control-plane
+        operator: Equal
+        effect: NoSchedule
+      - effect: NoExecute
+        key: com.palantir.rubix.node/infrastructure
+        operator: Exists
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      containers:
+        - command: ["/usr/local/bin/planer"]
+          args:
+            - --log-output=stdout
+            - --line-buffer-size=1310720
+            - --filters=/etc/planer/agent.planer
+            - --
+            - cilium-agent
+            - --kvstore=etcd
+            - --kvstore-opt=etcd.config=/var/lib/etcd-config/etcd.config
+            - --container-runtime=none
+            - --k8s-kubeconfig-path={{ $kubeconfigDir }}/kubeconfig
+            - --config-dir=/tmp/cilium/config-map
+            - --enable-policy=default
+            - --masquerade=false
+            - --tunnel=disabled
+            - --ipam=eni
+            - --auto-create-cilium-node-resource=true
+            - --read-cni-conf=/host/etc/cni/template/cni.conflist
+            - --write-cni-conf-when-ready=/host/etc/cni/net.d/cni.conflist
+            - --prometheus-serve-addr=127.0.0.1:9090
+            - --blacklist-conflicting-routes=false
+            - --enable-endpoint-routes=true
+            - --enable-k8s-event-handover=true
+            - --disable-cnp-status-updates=true
+            - --monitor-aggregation=medium
+            - --disable-endpoint-crd
+            - --tofqdns-endpoint-max-ip-per-hostname=256
+            - --tofqdns-proxy-response-max-delay=2s
+            - --enable-health-checking=false
+            - --tofqdns-dns-reject-response-code=nameError
+            - --bpf-policy-map-max=49152
+            - --enable-k8s-endpoint-slice=false
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: CILIUM_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: CILIUM_CUSTOM_CNI_CONF
+              valueFrom:
+                configMapKeyRef:
+                  key: custom-cni-conf
+                  name: cilium-config
+                  optional: true
+            - name: CILIUM_FLANNEL_MASTER_DEVICE
+              valueFrom:
+                configMapKeyRef:
+                  key: flannel-master-device
+                  name: cilium-config
+                  optional: true
+            - name: CILIUM_FLANNEL_UNINSTALL_ON_EXIT
+              valueFrom:
+                configMapKeyRef:
+                  key: flannel-uninstall-on-exit
+                  name: cilium-config
+                  optional: true
+            - name: CILIUM_CLUSTERMESH_CONFIG
+              value: /var/lib/cilium/clustermesh/
+            - name: CILIUM_CNI_CONF
+              value: /host/etc/cni/net.d/0000_cilium.conf
+          image: docker.external.palantir.build/deployability/cilium/agent:{{ .ApplicationVersion }}
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /cni-install.sh
+            preStop:
+              exec:
+                command:
+                  - /cni-uninstall.sh
+          livenessProbe:
+            exec:
+              command:
+                - /liveness-check.sh
+            failureThreshold: 5
+            # The initial delay for the liveness probe is intentionally large to
+            # avoid an endless kill & restart cycle if in the event that the initial
+            # bootstrapping takes longer than expected.
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: cilium-agent
+          ports:
+            - containerPort: 9090
+              hostPort: 9090
+              name: prometheus
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - cilium
+                - status
+                - --brief
+                - --timeout=2s
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 5
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+            privileged: true
+          volumeMounts:
+            - mountPath: {{ $vaultCertFetchOutputDir }}
+              name: kubecerts
+            - mountPath: {{ $kubeconfigDir }}
+              name: kubeconfig
+            - mountPath: /sys/fs/bpf
+              name: bpf-maps
+            - mountPath: /var/run/cilium
+              name: cilium-run
+            - mountPath: /host/opt/cni/bin
+              name: cni-path
+            - mountPath: /host/etc/cni/net.d
+              name: etc-cni-netd
+            - mountPath: /host/etc/cni/template
+              name: etc-cni-template
+            - mountPath: /var/lib/etcd-config
+              name: etcd-config-path
+              readOnly: true
+            - mountPath: /tmp/cilium/config-map
+              name: cilium-config-path
+              readOnly: true
+              # Needed to be able to load kernel modules
+            - mountPath: /lib/modules
+              name: lib-modules
+              readOnly: true
+              # To access iptables concurrently with other processes (e.g. kube-proxy)
+            - mountPath: /run/xtables.lock
+              name: xtables-lock
+          resources:
+            requests:
+              cpu: {{ .Variables.CiliumAgentCPURequests }}
+            limits:
+              cpu: 6
+              memory: {{ .Variables.CiliumAgentMemoryLimits }}
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      hostPID: false
+      initContainers:
+        - args:
+          - oneshot
+          - --config=/etc/vault-cert-fetch/vault-cert-fetch.yml
+          image: docker.external.palantir.build/rubix/vault-cert-fetch:{{ $vaultCertFetchVersion }}
+          name: vault-cert-fetch
+          resources:
+            limits:
+              cpu: 500m
+              memory: 100Mi
+            requests:
+              cpu: 25m
+              memory: 100Mi
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: COMMON_NAME
+              value: "rubix:cilium-agent:$(K8S_NODE_NAME)"
+          volumeMounts:
+          - mountPath: /etc/vault-cert-fetch
+            name: vault-cert-fetch-config
+          - mountPath: {{ $vaultCertFetchOutputDir }}
+            name: kubecerts
+          - mountPath: /etc/vault/ca.pem
+            name: etc-vault-ca
+        - command:
+            - /init-container.sh
+          env:
+            - name: CLEAN_CILIUM_STATE
+              valueFrom:
+                configMapKeyRef:
+                  key: clean-cilium-state
+                  name: cilium-config
+                  optional: true
+            - name: CLEAN_CILIUM_BPF_STATE
+              valueFrom:
+                configMapKeyRef:
+                  key: clean-cilium-bpf-state
+                  name: cilium-config
+                  optional: true
+            - name: CILIUM_WAIT_BPF_MOUNT
+              valueFrom:
+                configMapKeyRef:
+                  key: wait-bpf-mount
+                  name: cilium-config
+                  optional: true
+          image: docker.external.palantir.build/deployability/cilium/agent:{{ .ApplicationVersion }}
+          imagePullPolicy: IfNotPresent
+          name: clean-cilium-state
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+            privileged: true
+          volumeMounts:
+            - mountPath: /sys/fs/bpf
+              name: bpf-maps
+            - mountPath: /var/run/cilium
+              name: cilium-run
+          resources:
+            requests:
+              cpu: 300m
+            limits:
+              cpu: 1
+              memory: 100Mi
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 1
+      volumes:
+        - hostPath:
+            path: /etc/vault/ca.pem
+            type: File
+          name: etc-vault-ca
+        - emptyDir: {}
+          name: kubecerts
+        - downwardAPI:
+            items:
+            - fieldRef:
+                fieldPath: metadata.annotations['com.palantir.k8s-application/vault-cert-fetch-config']
+              path: vault-cert-fetch.yml
+          name: vault-cert-fetch-config
+        - downwardAPI:
+            items:
+              - fieldRef:
+                  fieldPath: metadata.annotations['com.palantir.rubix.config-content/kubeconfig']
+                path: kubeconfig
+          name: kubeconfig
+        # To keep state between restarts / upgrades
+        - hostPath:
+            path: /var/run/cilium
+            type: DirectoryOrCreate
+          name: cilium-run
+          # To keep state between restarts / upgrades for bpf maps
+        - hostPath:
+            path: /sys/fs/bpf
+            type: DirectoryOrCreate
+          name: bpf-maps
+          # To install cilium cni plugin in the host
+        - hostPath:
+            path: /opt/cni/bin
+            type: DirectoryOrCreate
+          name: cni-path
+          # To install cilium cni configuration in the host
+        - hostPath:
+            path: /etc/cni/net.d
+            type: DirectoryOrCreate
+          name: etc-cni-netd
+        - hostPath:
+            path: /etc/cni/template
+            type: DirectoryOrCreate
+          name: etc-cni-template
+          # To be able to load kernel modules
+        - hostPath:
+            path: /lib/modules
+          name: lib-modules
+          # To access iptables concurrently with other processes (e.g. kube-proxy)
+        - hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
+          name: xtables-lock
+          # To read the etcd config stored in config maps
+        - configMap:
+            defaultMode: 420
+            items:
+              - key: etcd-config
+                path: etcd.config
+            name: cilium-config
+          name: etcd-config-path
+          # To read the configuration from the config map
+        - configMap:
+            name: cilium-config
+          name: cilium-config-path
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: {{ .Variables.MaxUnavailable }}
+    type: RollingUpdate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cilium
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cilium
+subjects:
+  - kind: ServiceAccount
+    name: cilium
+    namespace: kube-system
+  - kind: Group
+    name: rubix:cilium-agents
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cilium
+rules:
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - networkpolicies
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - services
+      - nodes
+      - endpoints
+      - componentstatuses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - nodes/status
+    verbs:
+      - patch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - cilium.io
+    resources:
+      - ciliumnetworkpolicies
+      - ciliumnetworkpolicies/status
+      - ciliumclusterwidenetworkpolicies
+      - ciliumclusterwidenetworkpolicies/status
+      - ciliumendpoints
+      - ciliumendpoints/status
+      - ciliumnodes
+      - ciliumnodes/status
+      - ciliumidentities
+      - ciliumidentities/status
+    verbs:
+      - '*'
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium
+  namespace: kube-system

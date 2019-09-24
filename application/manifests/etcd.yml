@@ -1,0 +1,345 @@
+{{ $kubeSystemNamespace := "kube-system" -}}
+{{ $upstreamEtcdVersion := "3.4.5" -}}
+{{ $etcdVersion := "3.4.5-palantir3" -}}
+{{ $etcdSidecarVersion := "1.11.1" -}}
+{{ $dataDir := "/var/lib/etcd" -}}
+{{ $certDir := "/mnt/secrets/certs" -}}
+{{ $confDir := "/etc/etcd/conf" -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-etcd
+  namespace: {{ $kubeSystemNamespace }}
+  labels:
+    rubix-app: cilium-etcd
+spec:
+  ports:
+    - port: 2379
+      name: client
+    - port: 2380
+      name: peer
+  clusterIP: None
+  selector:
+    rubix-app: cilium-etcd
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: cilium-etcd
+  namespace: {{ $kubeSystemNamespace }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      rubix-app: cilium-etcd
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cilium-etcd
+  namespace: {{ $kubeSystemNamespace }}
+spec:
+  selector:
+    matchLabels:
+      rubix-app: cilium-etcd
+  serviceName: cilium-etcd
+  replicas: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: cilium-etcd-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ .K8sStorageClass.V1 }}
+        resources:
+          requests:
+            storage: 500Gi
+  template:
+    metadata:
+      name: cilium-etcd
+      labels:
+        rubix-app: cilium-etcd
+        com.palantir.sls.status/sls-status: ""
+        # The following 3 labels are required in order to bootstrap etcd when running with Cilium as CNI.
+        # Cilium will not require etcd to be up in order to establish an identity for these pods. (http://docs.cilium.io/en/v1.5/concepts/#well-known-identities)
+        app: etcd
+        etcd_cluster: cilium-etcd
+        io.cilium/app: etcd-operator
+      annotations:
+        # Using this pki-key-pair annotation this way, this etcd cluster allows certs signed by the rubix-pod-ca access to
+        # the cluster. Such certs are granted fairly permissively, we are using this CA for multiple reasons:
+        # 1. Maintaining a separate circle of trust via another CA adds significant complexity to our configuration of vault.
+        #    This isn't tenable for the number of different circles of trust we have. Rather than manually add more CAs,
+        #    we should solve this problem more generally and defer for now.
+        # 2. We will be restricting access to etcd via firewalling, which mitigates a lot of risk.
+        # 3. Compared to access to the k8s etcd, access to this etcd is much less detrimental to security. That is why we've
+        #    deemed it safer to use the rubix-pod-ca than the etcdca here.
+        com.palantir.k8sapplications/hostports: '{"host-ports": [8087, 8088, 2379, 2380, 8080]}'
+        com.palantir.deployability/status-sidecar-ports: >
+          {
+            "application": 8087,
+            "management": 8088
+          }
+        com.palantir.rubix.pod/pod-key-pair-v2: |
+          {
+            "service": {
+              "name": "cilium-etcd",
+              "namespace": "kube-system"
+            }
+          }
+        com.palantir.rubix.pod/sls-service-info-v2: >
+          {
+            "service-name": "cilium-etcd",
+            "service-id": "kube-system-cilium-etcd",
+            "stack-name": "{{ $kubeSystemNamespace }}",
+            "stack-id": "{{ $kubeSystemNamespace }}",
+            "containers": {
+              "cilium-etcd": {
+                "product-name": "etcd",
+                "product-version": "{{ $upstreamEtcdVersion }}"
+              },
+              "etcd-sidecar": {
+                "product-name": "etcd-sidecar",
+                "product-version": "{{ $etcdSidecarVersion }}"
+              }
+            }
+          }
+        com.palantir.sls.status/metadata: |
+          {
+            "entityId": "cilium-etcd",
+            "entityName": "cilium-etcd",
+            "productName": "etcd",
+            "productGroup": "coreos.io",
+            "quorum": "simple-majority",
+            "productVersion": "{{ $upstreamEtcdVersion }}",
+            "stackName": "{{ $kubeSystemNamespace }}",
+            "stackId": "{{ $kubeSystemNamespace }}"
+          }
+        com.palantir.sls.status/probe: |
+          {
+            "containerProbes": {
+              "cilium-etcd-check-sidecar": {
+                "path": "/etcd",
+                "port": "8080"
+              }
+            }
+          }
+        com.palantir.rubix.config-content/etcd.yml: |
+          url: https://ETCD_HOSTNAME.cilium-etcd.kube-system.svc.cluster.local:2379
+          tls:
+            cert-file: {{ $certDir }}/cert.pem
+            key-file: {{ $certDir }}/key.pem
+            ca-files:
+              - {{ $certDir }}/ca.pem
+        com.palantir.rubix.config-content/sidecar.yml: |
+          product-name: etcd-sidecar
+          server:
+            address: 0.0.0.0
+            port: 8080
+            cert-file: {{ $certDir }}/cert.pem
+            key-file: {{ $certDir }}/key.pem
+            client-ca-files:
+            - {{ $certDir }}/ca.pem
+          logging:
+            level: debug
+          use-console-log: true
+          etcd-status-provider-config:
+              etcd-status-poll-interval: 60s
+              etcd-status-grace-period: 120s
+              etcd-unhealthy-size-gbs: 4
+          tls:
+            cert-file: {{ $certDir }}/cert.pem
+            key-file: {{ $certDir }}/key.pem
+            ca-files:
+              - {{ $certDir }}/ca.pem
+            client-auth: false
+          snapshotCleaner:
+            data-dir: {{ $dataDir }}/member
+            snapshot-clean-interval: 5m
+            snapshot-grace-period: 1h
+          etcd-defrag-config:
+            etcd-compaction-retention: 25000
+            etcd-defrag-interval: 5m
+          etcd-backup-config:
+            enable: false
+          metricsPoller:
+            pollInterval: 1m
+            metricsEndpoint: "/metrics"
+            metricsWhitelist:
+              etcd_debugging_store_watchers: di.etcd_sidecar.etcd.v0.store_watchers
+              etcd_network_peer_sent_bytes_total: di.etcd_sidecar.etcd.v0.network_peer_sent_bytes_total
+              etcd_network_peer_received_bytes_total: di.etcd_sidecar.etcd.v0.network_peer_received_bytes_total
+              etcd_disk_wal_fsync_duration_seconds: di.etcd_sidecar.etcd.v0.disk_wal_fsync_dyration_seconds
+              etcd_network_peer_round_trip_time_seconds: di.etcd_sidecar.etcd.v0.network_peer_round_trip_time_seconds
+              etcd_network_peer_sent_failures_total: di.etcd_sidecar.etcd.v0.network_peer_sent_failures_total
+              etcd_server_is_leader: di.etcd_sidecar.etcd.v0.server_is_leader
+              etcd_debugging_mvcc_db_total_size_in_bytes: di.etcd_sidecar.etcd.v0.db_size_bytes
+              etcd_debugging_mvcc_delete_total: di.etcd_sidecar.etcd.v0.delete_total
+              etcd_debugging_mvcc_events_total: di.etcd_sidecar.etcd.v0.events_total
+              etcd_debugging_mvcc_keys_total: di.etcd_sidecar.etcd.v0.keys_total
+              etcd_debugging_mvcc_pending_events_total: di.etcd_sidecar.etcd.v0.pending_events_total
+              etcd_debugging_mvcc_put_total: di.etcd_sidecar.etcd.v0.put_total
+              etcd_debugging_mvcc_range_total: di.etcd_sidecar.etcd.v0.range_total
+              etcd_debugging_mvcc_txn_total: di.etcd_sidecar.etcd.v0.txn_total
+              etcd_debugging_store_expires_total: di.etcd_sidecar.etcd.v0.expires_total
+              etcd_debugging_store_reads_total: di.etcd_sidecar.etcd.v0.reads_total
+              etcd_debugging_store_writes_total: di.etcd_sidecar.etcd.v0.writes_total
+              etcd_server_has_leader: di.etcd_sidecar.etcd.v0.etcd_server_has_leader
+              etcd_server_leader_changes_seen_total: di.etcd_sidecar.etcd.v0.leader_changes_seen_total
+              etcd_server_proposals_applied_total: di.etcd_sidecar.etcd.v0.proposals_applied_total
+              etcd_server_proposals_committed_total: di.etcd_sidecar.etcd.v0.proposals_committed_total
+              etcd_server_proposals_failed_total: di.etcd_sidecar.etcd.v0.proposals_failed_total
+              etcd_server_proposals_pending: di.etcd_sidecar.etcd.v0.proposals_pending
+              go_gc_duration_seconds: di.etcd_sidecar.etcd.v0.go_gc_duration_seconds
+              go_goroutines: di.etcd_sidecar.etcd.v0.go_goroutines
+              go_memstats_alloc_bytes: di.etcd_sidecar.etcd.v0.go_memstats_alloc_bytes
+              go_memstats_heap_alloc_bytes: di.etcd_sidecar.etcd.v0.go_memstats_heap_alloc_bytes
+              go_memstats_last_gc_time_seconds: di.etcd_sidecar.etcd.v0.go_memstats_last_gc_time_seconds
+              go_memstats_next_gc_bytes: di.etcd_sidecar.etcd.v0.go_memstats_next_gc_bytes
+              go_memstats_other_sys_bytes: di.etcd_sidecar.etcd.v0.go_memstats_other_sys_bytes
+              http_request_duration_microseconds: di.etcd_sidecar.etcd.v0.http_request_duration_microseconds
+              http_request_size_bytes: di.etcd_sidecar.etcd.v0.http_request_size_bytes
+              http_response_size_bytes: di.etcd_sidecar.etcd.v0.http_response_size_bytes
+              process_max_fds: di.etcd_sidecar.etcd.v0.process_max_fds
+              process_open_fds: di.etcd_sidecar.etcd.v0.process_open_fds
+              process_resident_memory_bytes: di.etcd_sidecar.etcd.v0.process_resident_memory_bytes
+              process_start_time_seconds: di.etcd_sidecar.etcd.v0.process_start_time_seconds
+              process_virtual_memory_bytes: di.etcd_sidecar.etcd.v0.process_virtual_memory_bytes
+    spec:
+      volumes:
+      - name: etcd-sidecar-config
+        downwardAPI:
+          items:
+          - path: etcd.yml
+            fieldRef:
+              fieldPath: metadata.annotations['com.palantir.rubix.config-content/etcd.yml']
+          - path: sidecar.yml
+            fieldRef:
+              fieldPath: metadata.annotations['com.palantir.rubix.config-content/sidecar.yml']
+      tolerations:
+      - key: dedicated
+        value: control-plane
+        operator: Equal
+        effect: NoSchedule
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nodetype
+                operator: In
+                values:
+                - control-plane
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: rubix-app
+                    operator: In
+                    values:
+                      - cilium-etcd
+              topologyKey: "kubernetes.io/hostname"
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: rubix-app
+                      operator: In
+                      values:
+                        - cilium-etcd
+                topologyKey: "failure-domain.beta.kubernetes.io/zone"
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: cilium-etcd
+          image: docker.external.palantir.build/coreos/etcd/etcd:{{ $etcdVersion }}
+          volumeMounts:
+            - name: cilium-etcd-data
+              mountPath: {{ $dataDir }}
+          ports:
+            - containerPort: 2379
+              name: client
+            - containerPort: 2380
+              name: peer
+          env:
+            - name: CLUSTER_SIZE
+              value: "3"
+            - name: SET_NAME
+              value: "cilium-etcd"
+            - name: ETCDCTL_API
+              value: "3"
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                    apiVersion: v1
+                    fieldPath: metadata.name
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              exec /usr/local/bin/planer --filters=/etc/planer/filters.yml \
+                -- /etcd --name ${POD_NAME} \
+                --data-dir {{ $dataDir }} \
+                --heartbeat-interval 300 \
+                --election-timeout 1500 \
+                --initial-cluster-token cilium-etcd \
+                --initial-cluster cilium-etcd-0=https://cilium-etcd-0.cilium-etcd:2380,cilium-etcd-1=https://cilium-etcd-1.cilium-etcd:2380,cilium-etcd-2=https://cilium-etcd-2.cilium-etcd:2380 \
+                --initial-cluster-state new \
+                --quota-backend-bytes 4294967296 \
+                --listen-client-urls https://0.0.0.0:2379 \
+                --advertise-client-urls https://${POD_NAME}.${SET_NAME}:2379 \
+                --listen-peer-urls https://0.0.0.0:2380 \
+                --initial-advertise-peer-urls https://${POD_NAME}.${SET_NAME}:2380 \
+                --trusted-ca-file {{ $certDir }}/ca.pem \
+                --cert-file {{ $certDir }}/cert.pem \
+                --key-file {{ $certDir }}/key.pem \
+                --client-cert-auth=true \
+                --peer-trusted-ca-file {{ $certDir }}/ca.pem \
+                --peer-cert-file {{ $certDir }}/cert.pem \
+                --peer-key-file {{ $certDir }}/key.pem \
+                --peer-client-cert-auth=true
+          resources:
+            requests:
+              cpu: {{ .Variables.CiliumEtcdCPURequests }}
+            limits:
+              cpu: {{ .Variables.CiliumEtcdCPULimits }}
+              memory: {{ .Variables.CiliumEtcdMemoryLimits }}
+        - name: etcd-sidecar
+          image: docker.external.palantir.build/coreos/etcd-sidecar:{{ $etcdSidecarVersion }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                    apiVersion: v1
+                    fieldPath: metadata.name
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              cp {{ $confDir }}/etcd.yml etcd.yml
+              sed -i "s/ETCD_HOSTNAME/${POD_NAME}/g" etcd.yml
+              exec /usr/local/bin/etcd-sidecar --etcd-config=etcd.yml --sidecar-config={{ $confDir }}/sidecar.yml
+          ports:
+          - containerPort: 8080
+            name: etcd-sidecar
+          volumeMounts:
+          - name: etcd-sidecar-config
+            mountPath: {{ $confDir }}
+          - name: cilium-etcd-data
+            mountPath: {{ $dataDir }}
+          resources:
+            requests:
+              cpu: 100m
+            limits:
+              cpu: 1
+              memory: 100Mi

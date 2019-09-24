@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Add aws/azure storage class picking
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/165

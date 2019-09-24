@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Ignore kubelet health checks from flow logs
+
+    All the traffic that is mapped with source/dst label reserved:host is localhost traffic which we ignore anyway in [osquery config](https://github.palantir.build/rubix/amis/blob/master/puppet/modules/osquery/files/osquery.conf#L12).
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/119

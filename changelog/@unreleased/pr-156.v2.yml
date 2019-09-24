@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Add rubix:cilium-agents group to cilium agent role binding
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/156

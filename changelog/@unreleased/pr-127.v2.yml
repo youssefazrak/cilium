@@ -1,0 +1,10 @@
+type: improvement
+improvement:
+  description: |-
+    Go to hubble 2019-11-14-a395327
+
+    Includes just 2 field renames in exported logs:
+    - source -> source_ip
+    - destination -> destination_ip
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/127

@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Reduce hubble memory limits
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/196

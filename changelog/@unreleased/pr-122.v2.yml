@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Ignore pods with k8s:rubix-app=spot-terminations-logger label
+
+    Not really interested in this deamonset that creates requests to the metadata service every couple of seconds.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/122

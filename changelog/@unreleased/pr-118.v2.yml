@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Ignore rubix-multipass namespace + timelock traffic
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/118

@@ -1,0 +1,21 @@
+# Excavator auto-updates this file. Please contribute improvements to the central template:
+# https://github.palantir.build/devtools/excavator-scripts/blob/develop/excavator/bulldozer/rubix.bulldozer.yml
+
+version: 1
+
+merge:
+  whitelist:
+    labels: ["merge when ready"]
+    comment_substrings: ["==MERGE_WHEN_READY=="]
+  blacklist:
+    labels: ["do not merge", "needs testing"]
+    comment_substrings: ["==DO_NOT_MERGE=="]
+  method: squash
+  options:
+    squash:
+      body: summarize_commits
+  delete_after_merge: false
+
+update:
+  blacklist:
+    labels: ["do not update"]

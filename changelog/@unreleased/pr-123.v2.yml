@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Ignore labels reserved:unknown
+
+    This is UDP traffic which we double get from L7 DNS flow logs anyway.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/123

@@ -1,0 +1,11 @@
+type: improvement
+improvement:
+  description: |-
+    Hubble logging tweaks
+
+    Log just the following:
+    - all drops (except icmpv6)
+    - all ProcessConnectEvets + DNS requests
+    - blacklist everything
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/142

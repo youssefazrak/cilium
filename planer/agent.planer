@@ -1,0 +1,43 @@
+drop-unmatched: true
+log-matchers:
+- type: service.1
+  name: cilium-agent
+  content:
+    regex: '^level=(?P<level>\w+)\ msg=(?P<message>.*)$'
+  filters: []
+  blacklist-filters: &blacklist-filters
+    - type: prefix
+      key: message
+      values:
+        - "\"NetworkPolicy successfully added\""
+        - "\"NetworkPolicy successfully removed\""
+        - "\"regenerating all endpoints\""
+        - "\"Unable to delete CT entry\""
+        - "\"FQDN garbage collector work deleted 1 name entries\""
+        - "\"Deleted CiliumNetworkPolicy\""
+        - "\"Policy imported via API, recalculating...\""
+        - "\"Imported CiliumNetworkPolicy\""
+        - "\"Policy Add Request\""
+  fields:
+    origin:
+      default: "cilium.io/agent"
+    message:
+      safe: true
+    level:
+      modifiers:
+      - transform:
+          "info": "INFO"
+          "warn": "WARN"
+          "warning": "WARN"
+          "debug": "DEBUG"
+          "error": "ERROR"
+          "fatal": "ERROR"
+- type: service.1
+  name: cilium-agent-stacktrace
+  content:
+    regex: '^(?P<message>\t\.?\.?\/.+|panic.+|goroutine.+|created by.+|logging error output.+|[^\s].+\w+\(.*\))$'
+  fields:
+    origin:
+      default: "cilium.io/agent"
+    level:
+      default: "ERROR"

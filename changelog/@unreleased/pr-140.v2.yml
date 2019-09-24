@@ -1,0 +1,8 @@
+type: fix
+fix:
+  description: |-
+    Fix passing of args
+
+    It got interpreted as a full arg `--timeout 2s` instead of 2 of them `--timeout` + `2s`
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/140

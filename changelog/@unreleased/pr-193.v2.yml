@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Update etcd to 3.4.5 and etcd-sidecar to 1.11.1
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/193

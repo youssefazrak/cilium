@@ -68,6 +68,16 @@ func (d *Daemon) policyUpdateTrigger(reasons []string) {
 	log.Debugf("Regenerating all endpoints")
 	reason := strings.Join(reasons, ", ")
 
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("aanm: reason = %p %+v\n", &reason, reason)
+			fmt.Printf("aanm: reasons = %p %+v\n", &reasons, reasons)
+			fmt.Println("aanm: stack", r)
+			// still panic to crash cilium-agent
+			panic("aanm: panic in textformatter")
+		}
+	}()
+
 	regenerationMetadata := &regeneration.ExternalRegenerationMetadata{
 		Reason:            reason,
 		RegenerationLevel: regeneration.RegenerateWithoutDatapath,

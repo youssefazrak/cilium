@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Enable socket events for hubble
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/133

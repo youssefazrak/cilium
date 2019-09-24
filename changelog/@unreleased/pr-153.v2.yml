@@ -1,0 +1,5 @@
+type: fix
+fix:
+  description: Increase policy bpf map size
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/153

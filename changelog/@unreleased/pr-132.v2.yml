@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Bump to godel 2.20.0
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/132

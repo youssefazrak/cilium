@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Go to hubble 2019-11-25-da464e7
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/137

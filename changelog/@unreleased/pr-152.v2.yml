@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Bump fgs to 2020-01-30-000078c19817
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/152

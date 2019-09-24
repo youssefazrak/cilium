@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Go to hubble 2019-12-03-b4f6ff0
+
+    Allows `hubble-fgs` to work with `4.15.0-1057-aws` kernel version.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/148

@@ -1,0 +1,5 @@
+applications:
+- application-directory: application
+  application-name: cilium
+- application-directory: application-hubble
+  application-name: hubble

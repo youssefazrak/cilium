@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Drop fqdn to 128, use latest envoy image
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/87

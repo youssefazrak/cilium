@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Go to hubble 2019-11-12-9479afb
+
+    `2019-11-12-9479afb` of hubble includes a better ordering of keys in the exported json messages. This helps Splunk processing of messages since it does not need to read the full msg in order to extract the timestamp, type of msg and node_name.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/125

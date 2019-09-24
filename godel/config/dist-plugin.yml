@@ -1,0 +1,52 @@
+product-defaults:
+  publish:
+    group-id: com.palantir.deployability.cilium
+products:
+  operator:
+    build:
+      main-pkg: operator-dist
+    publish: {}
+    dist:
+      disters:
+        sls:
+          type: sls
+          config:
+            dist-type: sls-and-config
+          input-dir:
+            path: ''
+            exclude:
+              names:
+                - .gitkeep
+    docker:
+      docker-builders:
+        docker-image:
+          type: default
+          context-dir: .
+          dockerfile-path: cilium-operator.Dockerfile
+          tag-templates:
+            release: '{{Repository}}deployability/cilium/operator:{{Version}}'
+            default: '{{Repository}}deployability/cilium/operator:{{Version}}'
+  agent:
+    build:
+      main-pkg: agent-dist
+    publish: {}
+    dist:
+      disters:
+        sls:
+          type: sls
+          config:
+            dist-type: sls-and-config
+          input-dir:
+            path: ''
+            exclude:
+              names:
+                - .gitkeep
+    docker:
+      docker-builders:
+        docker-image:
+          type: default
+          context-dir: .
+          dockerfile-path: Dockerfile
+          tag-templates:
+            release: '{{Repository}}deployability/cilium/agent:{{Version}}'
+            default: '{{Repository}}deployability/cilium/agent:{{Version}}'

@@ -14,6 +14,11 @@ _test
 tests/cilium-files
 test/test_results
 _build/
+out/
+agent/build/
+agent/dist/
+operator/build/
+operator/dist/
 
 # Architecture specific extensions/prefixes
 *.cgo1.go
@@ -69,3 +74,10 @@ test/bpf/_results
 
 # generated from make targets
 *.ok
+
+# Idea
+.idea/
+*.iml
+*.ipr
+*.iws
+

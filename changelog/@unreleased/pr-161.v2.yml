@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Go to fgs 2020-03-01-42daf5eaf9840
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/161

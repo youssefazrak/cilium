@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |-
+    Go to hubble 2019-11-11-21acc3e
+
+    This release of hubble includes fixes to connection aggregation which was broken before (https://github.com/covalentio/hubble/commit/21acc3e699d287b28a7ab27e910091820e4bd026).
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/121

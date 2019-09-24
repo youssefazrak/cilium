@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Add comment to metrics
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/147

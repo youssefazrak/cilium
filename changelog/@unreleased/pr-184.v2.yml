@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Increase cilium-agent memory limits by 25% for small stacks
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/184

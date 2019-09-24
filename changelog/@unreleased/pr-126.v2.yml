@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Exclude traffic to ops.palantir.local + palantircloud.com
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/126

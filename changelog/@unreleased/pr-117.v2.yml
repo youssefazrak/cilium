@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Filter out S3 + keppel traffic from exported flow logs
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/117

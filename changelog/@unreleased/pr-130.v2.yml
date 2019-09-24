@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: 'Go to hubble 2019-11-19-aeae91e + UDP filtering '
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/130

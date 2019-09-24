@@ -1,0 +1,8 @@
+type: improvement
+improvement:
+  description: |
+    Set individual etcd endpoints in the config
+
+    This configures different etcd EPs for the client side config. Before we were using one DNS name which caused the client to not load balance.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/192

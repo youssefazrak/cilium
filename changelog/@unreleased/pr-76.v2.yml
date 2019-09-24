@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Set --tofqdns-proxy-response-max-delay to 2s
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/76

@@ -519,6 +519,23 @@ func cmdAdd(args *skel.CmdArgs) (err error) {
 		return
 	}
 
+	if err = netNs.Do(func(_ ns.NetNS) error {
+		if err = sysctl.Write("net/ipv4/tcp_keepalive_time", "20\n"); err != nil {
+			return fmt.Errorf("failed to set tcp_keepalive time: %s", err)
+		}
+		if err = sysctl.Write("net/ipv4/tcp_keepalive_intvl", "5\n"); err != nil {
+			return fmt.Errorf("failed to set tcp_keepalive_intvl: %s", err)
+		}
+		if err = sysctl.Write("net/ipv4/tcp_keepalive_probes", "3\n"); err != nil {
+			return fmt.Errorf("failed to set tcp_keepalive_probes: %s", err)
+		}
+
+		return nil
+	}); err != nil {
+		err = fmt.Errorf("failed to set keepalive value: %s", err)
+		return
+	}
+
 	res.Interfaces = append(res.Interfaces, &cniTypesVer.Interface{
 		Name:    args.IfName,
 		Mac:     macAddrStr,

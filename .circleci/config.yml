@@ -1,0 +1,326 @@
+working_dir: &working_dir
+  working_directory: /go/src/github.com/cilium/cilium
+
+# Uses a custom image to support efficient cross-compilation for darwin and linux with no CGo. This image has the Go
+# standard libraries without CGo for both platforms precompiled and sets CGO_ENABLED to 0. Defaults to disabling CGo so
+# that the compiled binaries do not have any dependencies on C (which allows more portability to run in environments
+# like alpine-linux where glibc is not standard. This image also includes Java so that projects that generate Conjure IR
+# can do so properly (required until https://github.com/palantir/conjure/issues/68 is resolved).
+darwin-linux-no-cgo: &darwin-linux-no-cgo
+  <<: *working_dir
+  docker:
+    - image: palantirtechnologies/go:go-darwin-linux-no-cgo-1.14.1-java-11-t42
+      environment:
+        CGO_ENABLED: 0
+
+# Standard Go image with Docker installed to allow execution of Docker operations.
+go-docker: &go-docker
+  <<: *working_dir
+  docker:
+    - image: palantirtechnologies/go:go-1.14.1-docker-17.12.1-ce-t42
+
+# Operations for saving and loading gödel cache, which contains all of the plugin and asset executables. Cache is keyed
+# on checksum of godelw and godel/config/godel.yml, as the content of these files should be enough to identify the
+# dependencies.
+godel-cache-restore: &godel-cache-restore
+  restore_cache:
+    keys:
+      - &godel-cache-key godel-cache-{{ checksum "godelw" }}-{{ checksum "godel/config/godel.yml" }}-v1
+godel-cache-save: &godel-cache-save
+  save_cache:
+    key: *godel-cache-key
+    paths:
+      - ~/.godel
+
+# gödel cache only works if cached outputs are newer than source that generates it. CircleCI restore_cache restores
+# the cache with the original modification dates, but the source's modification date in CI is the time of checkout.
+# Manually touch all of the cache output to mark it as being generated after source was checked out.
+out-cache-fix: &out-cache-fix
+  run: find out -exec touch {} \;
+
+go-version: &go-version
+  run: go version
+
+godel-version: &godel-version
+  run: ./godelw version
+
+# Ensures that build only runs with relevant tags. Prevents failure that can occur when both a branch build and tag
+# build are run for the same commit by ensuring that the two will have different git version strings.
+# Content adapted from https://github.palantir.build/devtools/circle2-build-images/blob/master/palantir-utils/bin/delete_unrelated_tags.
+delete_unrelated_tags: &delete_unrelated_tags
+  run:
+    name: Delete unrelated tags
+    command: |
+      ALL_TAGS=$(git tag --points-at HEAD)
+
+      if [ -z "$ALL_TAGS" ]; then
+          echo "No-op as there are no tags on the current commit ($(git rev-parse HEAD))"
+          exit 0
+      fi
+
+      if [ -z "${CIRCLE_TAG:+x}" ]; then
+          echo "Non-tag build, deleting all tags which point to HEAD: [${ALL_TAGS/$'\n'/,}]"
+          echo "$ALL_TAGS" | while read -r TAG; do git tag -d "$TAG" 1>/dev/null; done
+          exit 0
+      fi
+
+      TAGS_TO_DELETE=$(echo "$ALL_TAGS" | grep -v "^$CIRCLE_TAG$" || :)
+      if [ -z "$TAGS_TO_DELETE" ]; then
+          echo "No-op as exactly one tag ($CIRCLE_TAG) points to HEAD"
+          exit 0
+      fi
+
+      echo "Detected tag build, deleting all tags except '$CIRCLE_TAG' which point to HEAD: [${TAGS_TO_DELETE/$'\n'/,}]"
+      echo "$TAGS_TO_DELETE" | while read -r TAG; do git tag -d "$TAG" 1>/dev/null; done
+
+
+# Preconditions:
+#   * Docker images to be published have been built with a blank repository name and saved to a file using "docker save" in a persisted workspace.
+#   * RELEASE_TYPE environment variable is set to either "release" or "snapshot" (the sls publisher uses this to determine the publish destination).
+#   * DOCKER_REPO environment variable is set to the Docker publish repo (e.g. docker.palantir.build).
+#   * ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD have been set for credentials that have write permissions for required Artifactory and Docker repositories.
+docker_publish_steps: &docker_publish_steps
+  - setup_remote_docker:
+      docker_layer_caching: true
+  - attach_workspace:
+      at: /tmp/docker-cache/
+  - checkout
+  - *godel-version
+  - run: docker load -i /tmp/docker-cache/docker-images.tar
+  - run: docker login -u "$ARTIFACTORY_USERNAME" -p "$ARTIFACTORY_PASSWORD" "$DOCKER_REPO"
+  # the build job builds and tags all of the Docker images using a blank value for repository. Re-tag all of the images with the proper repository prepended.
+  - run: |
+      set -x
+      for tag in $(./godelw artifacts docker); do
+        docker tag "$tag" "${DOCKER_REPO}/${tag}"
+      done
+  - run: |
+      ./godelw docker push --repository "$DOCKER_REPO"
+
+dist_steps: &dist_steps
+  - checkout
+  - *delete_unrelated_tags
+  - *go-version
+  - *godel-cache-restore
+  - *godel-version
+  - *godel-cache-save
+  - run: ./godelw dist
+  - save_cache:
+      key: &out-cache-key out-{{ .Environment.CIRCLE_WORKFLOW_ID }}-{{ .Environment.CIRCLE_SHA1 }}-v1
+      paths:
+        - out
+
+publish_steps: &publish_steps
+  - checkout
+  - *delete_unrelated_tags
+  - *go-version
+  - *godel-version
+  - run: ./godelw publish sls --dist-type sls --release "$RELEASE_TYPE" --url https://artifactory.palantir.build --username "$ARTIFACTORY_USERNAME" --password "$ARTIFACTORY_PASSWORD"
+
+application_publish_steps: &application_publish_steps
+  - checkout
+  - run: if ! [ -z $ARTIFACTORY_USERNAME ]; then ./godelw k8s-application-publish --artifactory-username $ARTIFACTORY_USERNAME --artifactory-password $ARTIFACTORY_PASSWORD --artifactory-repo $K8S_APPLICATION_REPO; fi
+
+apollo-publish-steps: &apollo-publish-steps
+  - checkout
+  - *delete_unrelated_tags
+  - *godel-cache-restore
+  - restore_cache:
+      keys:
+        - *out-cache-key
+  - *out-cache-fix
+  - run: ./godelw publish apollo
+
+apollo-publish-steps-dryrun: &apollo-publish-steps-dryrun
+  - checkout
+  - *delete_unrelated_tags
+  - *godel-cache-restore
+  - restore_cache:
+      keys:
+        - *out-cache-key
+  - *out-cache-fix
+  - run: ./godelw publish apollo --dry-run
+
+version: 2
+jobs:
+  # Creates and caches dist output.
+  dist:
+    <<: *darwin-linux-no-cgo
+    steps: *dist_steps
+  # Builds Docker images and saves them to a persisted layer so that they can be loaded later.
+  docker-build:
+    <<: *go-docker
+    steps:
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - checkout
+      - *delete_unrelated_tags
+      - *go-version
+      - *godel-cache-restore
+      - *godel-version
+      - run: ./godelw docker build --verbose
+      - run: |
+          mkdir -p /tmp/docker-cache
+          docker save -o /tmp/docker-cache/docker-images.tar $(./godelw artifacts docker)
+      - persist_to_workspace:
+          root: /tmp/docker-cache/
+          paths:
+            - docker-images.tar
+
+  # Publishes dist releases to apollo
+  publish-apollo-release:
+    <<: *darwin-linux-no-cgo
+    steps: *apollo-publish-steps
+  # Publishes dist snapshots to apollo
+  publish-apollo-snapshot:
+    <<: *darwin-linux-no-cgo
+    steps: *apollo-publish-steps
+  # Tests publishing to apollo
+  publish-apollo-dryrun:
+    <<: *darwin-linux-no-cgo
+    steps: *apollo-publish-steps-dryrun
+  # Publishes dist artifacts to Artifactory for releases
+  publish-release:
+    <<: *darwin-linux-no-cgo
+    environment:
+      RELEASE_TYPE: release
+    steps: *publish_steps
+
+  # Pushes Docker images for releases
+  push-docker-release:
+    <<: *go-docker
+    environment:
+      DOCKER_REPO: docker.palantir.build
+      RELEASE_TYPE: release
+    steps: *docker_publish_steps
+
+  # Publishes dist artifacts to Artifactory for snapshots
+  publish-snapshot:
+    <<: *darwin-linux-no-cgo
+    environment:
+      RELEASE_TYPE: snapshot
+    steps: *publish_steps
+
+  # Pushes Docker images for snapshots
+  push-docker-snapshot:
+    <<: *go-docker
+    environment:
+      DOCKER_REPO: snapshot.docker.palantir.build
+      RELEASE_TYPE: snapshot
+    steps: *docker_publish_steps
+
+  push-application-release:
+    <<: *go-docker
+    environment:
+      K8S_APPLICATION_REPO: internal-dist-release
+    steps: *application_publish_steps
+
+  push-application-snapshot:
+    <<: *go-docker
+    environment:
+      K8S_APPLICATION_REPO: internal-dist-snapshot
+    steps: *application_publish_steps
+
+### Workflows ###
+
+# The set of jobs that should be run on every build. All publish operations block on these jobs.
+requires_jobs: &requires_jobs
+  - dist
+  - docker-build
+
+all-tags-filter: &all-tags-filter
+  filters: { tags: { only: /.*/ } }
+
+# Filter that matches only release tags
+release-filter: &release-filter
+  filters:
+    tags:
+      only: /^v?[0-9]+(\.[0-9]+)+(-rc[0-9]+)?$/
+    branches:
+      ignore: /.*/
+
+# Filter that matches only release tags. Used for jobs that publish releases.
+release-requires-filter: &release-requires-filter
+  requires: *requires_jobs
+  <<: *release-filter
+
+# Filter that ignores all tags and only matches the primary branch.
+# This differs from the snapshot-filter since publishing all snapshots
+# to apollo can cause issues if subscribed to DEV release channels.
+apollo-snapshot-filter: &apollo-snapshot-filter
+  filters:
+    tags:
+      ignore: /.*/
+    branches:
+      only:
+        - release-1.6.8-palantir
+        - release-1.7.3-palantir
+
+# Filter that matches any branch besides primary branch and ignores all tags
+pull-request-requires-filter: &pull-request-requires-filter
+  requires: *requires_jobs
+  filters:
+    tags:
+      ignore: /.*/
+    branches:
+      ignore:
+        - release-1.6.8-palantir
+        - release-1.7.3-palantir
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - docker-build:
+          <<: *all-tags-filter
+      - dist:
+          <<: *all-tags-filter
+
+      # release jobs require the base jobs and only run on release tags
+      - push-docker-release:
+          <<: *release-requires-filter
+      # release jobs require the base jobs and only run on release tags
+      - publish-release:
+          <<: *release-requires-filter
+
+      # apollo dry-run publishing is run on every pull request
+      - publish-apollo-dryrun:
+          <<: *pull-request-requires-filter
+
+      # snapshot jobs require the base jobs and only run on the "master" branch
+      - publish-snapshot:
+          requires:
+            - docker-build
+            - dist
+          filters:
+            branches:
+              only: /.*/
+      - push-docker-snapshot:
+          requires:
+            - docker-build
+          filters:
+            branches:
+              only: /.*/
+      - publish-apollo-snapshot:
+          requires:
+            - publish-snapshot
+          <<: *apollo-snapshot-filter
+
+      - push-application-release:
+          requires:
+            - push-docker-release
+          <<: *release-filter
+      - publish-apollo-release:
+          requires:
+            - publish-release
+          <<: *release-filter
+
+      - push-application-snapshot:
+          requires:
+            - push-docker-snapshot
+          filters:
+            branches:
+              only: /.*/
+notify:
+  webhooks:
+    - url: https://parana.palantir.build/hook

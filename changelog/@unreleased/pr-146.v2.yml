@@ -1,0 +1,10 @@
+type: improvement
+improvement:
+  description: |-
+    Go to hubble 2019-12-06-b8151d7
+
+    hubble:
+    - go to 2019-12-06-b8151d7 which allows filtering traffic based if it's reply or not
+    - blacklist `reply: false` for dns traffic. reasoning is we want to see just dns-reply traffic in the success case and when it is a deny we want to see it at dns-request level
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/146

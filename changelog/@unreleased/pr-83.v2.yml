@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: drop down fqdn ip per endpoint to 256.
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/83

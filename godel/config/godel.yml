@@ -1,0 +1,19 @@
+tasks-config-providers:
+  resolvers:
+    - https://publish.artifactory.palantir.build/artifactory/internal-dist-release/{{GroupPath}}/{{Product}}/{{Version}}/{{Product}}-{{Version}}.yml
+  providers:
+    - locator:
+        id: com.palantir.di-godel-config:di-godel-config:1.10.0
+plugins:
+  resolvers:
+    - "https://palantir.bintray.com/releases/{{GroupPath}}/{{Product}}/{{Version}}/{{Product}}-{{Version}}-{{OS}}-{{Arch}}.tgz"
+    - "https://artifactory.palantir.build/artifactory/internal-dist/{{GroupPath}}/{{Product}}/{{Version}}/{{Product}}-{{Version}}-{{OS}}-{{Arch}}.tgz"
+  plugins:
+    - locator:
+        id: com.palantir.deployability:k8s-application-godel-plugin:1.46.0
+exclude:
+  names:
+    - "\\..+"
+    - "vendor"
+  paths:
+    - "godel"

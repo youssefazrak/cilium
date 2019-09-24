@@ -1,0 +1,7 @@
+infrastructure-instance-class:
+  small:
+    MaxUnavailable: 2
+  medium:
+    MaxUnavailable: 10
+  large:
+    MaxUnavailable: 20

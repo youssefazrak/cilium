@@ -1,0 +1,7 @@
+type: improvement
+improvement:
+  description: "Large - Bump limit to 1.5GiB\n\nRosewood is having the agents OOM,
+    this gives them 50% more overhead for memory which from DD looks like it'll be
+    enough. \n\nhttps://palantir.datadoghq.com/dashboard/s3y-ii4-yfy/rubix-container-resource-utilization?from_ts=1574308526877&live=true&tile_size=xl&to_ts=1574309426877&tpl_var_deployment=rosewood-rubix&tpl_var_environment=production-lowtrust-2&fullscreen_widget=2921791498918500&fullscreen_section=overview"
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/135

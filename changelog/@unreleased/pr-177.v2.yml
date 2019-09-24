@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Bump policy map size 50%
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/177

@@ -1,0 +1,238 @@
+{{- $hubbleVersion := "2020-03-26-e700f6f" -}}
+{{- $hubbleS3Version := "2020-03-26-e700f6f" -}}
+{{- $hubbleFgsVersion := "2020-03-26-e700f6f" -}}
+
+# fqdnExcludeArgs is for ignoring DNS requests
+{{- $fqdnExcludeArgs := "--export-ignore-fqdn='.*.localhost.$' --export-ignore-fqdn='.*cluster.local.$' --export-ignore-fqdn='.*palantircloud.com.$' --export-ignore-fqdn='.*palantir.build.$' --export-ignore-fqdn='.*compute.internal.$' --export-ignore-fqdn='.*k8s.local.$' --export-ignore-fqdn='.*ec2.internal.$'" -}}
+# processBinaryExcludeArgs is for excluding process events from certain binaries
+{{- $processBinaryExcludeArgs := "--export-ignore-binary='/coredns$' --export-ignore-binary='/opt/datadog-agent/bin/agent/agent$' --export-ignore-binary='/usr/local/bin/kubelet$' --export-ignore-binary='.*sls-status-reporter$' --export-ignore-binary='.*hubble$' --export-ignore-binary='.*cilium-agent$' --export-ignore-binary='.*launchpod$' --export-ignore-binary='/opt/palantir.*' --export-ignore-binary='.*java$' --export-ignore-binary='.*rubixbeat$' --export-ignore-binary='.*hubble-s3$' --export-ignore-binary='.*spot-terminations-logger$'" -}}
+---
+# Source: hubble/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hubble
+  namespace: kube-system
+
+---
+# Source: hubble/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hubble
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+
+---
+# Source: hubble/templates/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hubble
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hubble
+subjects:
+- kind: ServiceAccount
+  name: hubble
+  namespace: kube-system
+
+---
+# Source: hubble/templates/svc.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: hubble-peers
+  namespace: kube-system
+  labels:
+    rubix-app: hubble
+spec:
+  clusterIP: None
+  type: ClusterIP
+  selector:
+    rubix-app: hubble
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+  labels:
+    rubix-app: isovalent-hubble
+  name: isovalent-hubble
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      rubix-app: isovalent-hubble
+  template:
+    metadata:
+      annotations:
+        com.palantir.k8sapplications/hostports: |
+          {
+            "host-ports": []
+          }
+        com.palantir.rubix.pod/sls-service-info-v2: |
+          {
+            "service-name": "isovalent-hubble",
+            "service-id": "isovalent-hubble",
+            "stack-name": "kube-system",
+            "stack-id": "kube-system",
+            "containers": {
+              "isovalent-hubble": {
+                "product-name": "isovalent-hubble",
+                "product-version": "{{ .ApplicationVersion }}"
+              },
+              "isovalent-hubble-s3": {
+                "product-name": "isovalent-hubble-s3",
+                "product-version": "{{ .ApplicationVersion }}"
+              },
+              "isovalent-hubble-fgs": {
+                "product-name": "isovalent-hubble-fgs",
+                "product-version": "{{ .ApplicationVersion }}"
+              }
+            }
+          }
+      labels:
+        rubix-app: isovalent-hubble
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: control-plane
+        - effect: NoExecute
+          key: com.palantir.rubix.node/infrastructure
+          operator: Exists
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+        - effect: NoSchedule
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+      containers:
+      - args:
+        - -c
+        - "source /var/userdata/userdata.conf; source /var/userdata/instance.conf; export HUBBLE_NODE_NAME=${INSTANCE_ID}-${NODETYPE}.${INSTANCE_AZ}.${CLUSTER_NAME}.${COLOR};/usr/bin/hubble serve --export-directory=/var/hubble/export --port-translation=false --cri-endpoint /hostrun/containerd.sock --enable-process-visibility {{ $fqdnExcludeArgs }} {{ $processBinaryExcludeArgs }}"
+        command:
+        - /bin/sh
+        env:
+          - name: BLACKLIST
+            value: |-
+              {"protocol":["ICMPv6"]}
+          - name: WHITELIST
+            value: |-
+              {"event_type":[{"type":1}]}
+              {"protocol":["dns"], "reply":[true]}
+              {"verdict":["DROPPED"]}
+          - name: HUBBLE_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: HUBBLE_ENDPOINTS
+            value: "hubble-peers"
+        image: docker.external.palantir.build/deployability/isovalent/hubble-enterprise:{{ $hubbleVersion }}
+        name: isovalent-hubble
+        readinessProbe:
+          exec:
+            command:
+            - hubble
+            - status
+          failureThreshold: 3
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/userdata
+          name: userdata
+        - mountPath: /var/run/cilium
+          name: cilium-run
+        - mountPath: /var/hubble/export
+          name: export
+        - mountPath: /hostrun
+          name: host-run
+        - mountPath: "/var/run/hubble-fgs"
+          name: fgs
+        # TODO set resources see https://github.palantir.build/rubix/features/issues/2395
+        resources:
+          requests:
+            cpu: 1m
+            memory: 50m
+          limits:
+            cpu: 1
+            memory: 350Mi
+      - name: isovalent-hubble-fgs
+        image: docker.external.palantir.build/deployability/isovalent/hubble-fgs:{{ $hubbleFgsVersion }}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: "/var/run/hubble-fgs"
+          name: fgs
+        - mountPath: "/procRoot/"
+          name: fgs-proc
+          readOnly: true
+      - args:
+        - -c
+        - 'source /var/userdata/instance.conf; /usr/bin/hubble-s3 /var/hubble/export {{ .Logging.Central.Bucket.Name }} --kms --kms-id {{ .Logging.Central.Bucket.EncryptionKeyID }} --object-template {{if eq .DeploymentType "production"}}flows{{else}}dev-flows{{end}}/AWSLogs/{{ .AccountID }}/{{ "{{.YYYY}}/{{.MM}}/{{.DD}}/${INSTANCE_ID}/flows-{{.HH}}-{{.Source}}" }} --acl bucket-owner-full-control'
+        command:
+        - /bin/sh
+        env:
+        - name: AWS_REGION
+          value: {{ .Region }}
+        image: docker.external.palantir.build/deployability/isovalent/hubble-s3:{{ $hubbleS3Version }}
+        name: isovalent-hubble-s3
+        volumeMounts:
+        - mountPath: /var/userdata
+          name: userdata
+        - mountPath: /var/hubble/export
+          name: export
+        # TODO set resources
+        resources:
+          requests:
+            cpu: 1m
+            memory: 50m
+          limits:
+            cpu: 1
+            memory: 350Mi
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      serviceAccount: hubble
+      serviceAccountName: hubble
+      schedulerName: default-scheduler
+      securityContext: {}
+      priorityClassName: system-node-critical
+      volumes:
+      - hostPath:
+          path: /var/run/cilium
+          type: Directory
+        name: cilium-run
+      - hostPath:
+          path: /etc/userdata
+          type: Directory
+        name: userdata
+      - emptyDir:
+        name: export
+      - emptyDir: {}
+        name: fgs
+      - hostPath:
+          path: /proc/
+          type: Directory
+        name: fgs-proc
+      # Mount /var/run so that hubble can access containerd CRI endpoint /run/containerd/containerd.sock
+      - hostPath:
+          path: /run/containerd
+          type: Directory
+        name: host-run
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: {{ .Variables.MaxUnavailable }}
+    type: RollingUpdate

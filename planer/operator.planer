@@ -1,0 +1,29 @@
+log-matchers:
+- type: service.1
+  name: cilium-operator
+  content:
+    regex: '^level=(?P<level>\w+)\ msg=(?P<message>.*)$'
+  filters: []
+  fields:
+    origin:
+      default: "cilium.io/operator"
+    message:
+      safe: true
+    level:
+      modifiers:
+      - transform:
+          "info": "INFO"
+          "warn": "WARN"
+          "warning": "WARN"
+          "debug": "DEBUG"
+          "error": "ERROR"
+          "fatal": "ERROR"
+- type: service.1
+  name: cilium-operator-stacktrace
+  content:
+    regex: '^(?P<message>\t\.?\.?\/.+|panic.+|goroutine.+|created by.+|logging error output.+|[^\s].+\w+\(.*\))$'
+  fields:
+    origin:
+      default: "cilium.io/operator"
+    level:
+      default: "ERROR"

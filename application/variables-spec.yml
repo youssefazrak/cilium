@@ -1,0 +1,55 @@
+infrastructure-instance-class:
+  small:
+    # cilium-operator
+    CiliumOperatorCPURequests: 300m
+    CiliumOperatorMemoryLimits: 700Mi
+
+    # cilium-agent
+    CiliumAgentCPURequests: 300m
+    CiliumAgentMemoryLimits: 375Mi
+    MaxUnavailable: 2
+
+    # cilium-etcd
+    CiliumEtcdCPURequests: 500m
+    CiliumEtcdCPULimits: 6
+    CiliumEtcdMemoryLimits: 800Mi
+
+    # cilium-operator-health-sidecar
+    HealthCheckSidecarCPULimits: 100m
+    HealthCheckSidecarMemoryLimits: 100Mi
+  medium:
+    # cilium-operator
+    CiliumOperatorCPURequests: 300m
+    CiliumOperatorMemoryLimits: 700Mi
+
+    # cilium-agent
+    CiliumAgentCPURequests: 300m
+    CiliumAgentMemoryLimits: 700Mi
+    MaxUnavailable: 10
+
+    # cilium-etcd
+    CiliumEtcdCPURequests: 700m
+    CiliumEtcdCPULimits: 6
+    CiliumEtcdMemoryLimits: 1Gi
+
+    # cilium-operator-health-sidecar
+    HealthCheckSidecarCPULimits: 100m
+    HealthCheckSidecarMemoryLimits: 100Mi
+  large:
+    # cilium-operator
+    CiliumOperatorCPURequests: 450m
+    CiliumOperatorMemoryLimits: 2.5Gi
+
+    # cilium-agent
+    CiliumAgentCPURequests: 700m
+    CiliumAgentMemoryLimits: 1.5Gi
+    MaxUnavailable: 20
+
+    # cilium-etcd
+    CiliumEtcdCPURequests: 1.5
+    CiliumEtcdCPULimits: 9
+    CiliumEtcdMemoryLimits: 2Gi
+
+    # cilium-operator-health-sidecar
+    HealthCheckSidecarCPULimits: 100m
+    HealthCheckSidecarMemoryLimits: 100Mi

@@ -1,0 +1,6 @@
+type: improvement
+improvement:
+  description: |-
+    Have cilium agent request certs signed for its node using VCF
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/141

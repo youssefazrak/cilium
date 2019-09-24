@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: encode launchcontrol dependency
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/182

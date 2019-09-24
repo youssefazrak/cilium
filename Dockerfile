@@ -27,6 +27,12 @@ ARG LIBNETWORK_PLUGIN
 RUN make LOCKDEBUG=$LOCKDEBUG PKG_BUILD=1 V=$V LIBNETWORK_PLUGIN=$LIBNETWORK_PLUGIN \
     SKIP_DOCS=true DESTDIR=/tmp/install clean-container build-container install-container
 
+FROM docker.io/library/alpine:3.9.3 as planer
+ARG PLANER_VERSION=0.12.4
+ADD https://artifactory.palantir.build/artifactory/internal-dist/com/palantir/deployability/planer/$PLANER_VERSION/planer-$PLANER_VERSION-linux-amd64.tgz!/planer /usr/local/bin
+ADD planer /etc/planer
+RUN chmod +x /usr/local/bin/*
+
 #
 # Cilium runtime install.
 #
@@ -39,10 +45,13 @@ RUN make LOCKDEBUG=$LOCKDEBUG PKG_BUILD=1 V=$V LIBNETWORK_PLUGIN=$LIBNETWORK_PLU
 #
 FROM quay.io/cilium/cilium-runtime:2020-06-02-v1.7
 LABEL maintainer="maintainer@cilium.io"
+COPY --from=planer /usr/local/bin/planer /usr/local/bin/planer
+COPY --from=planer /etc/planer /etc/planer
 COPY --from=builder /tmp/install /
 COPY --from=cilium-envoy / /
 COPY plugins/cilium-cni/cni-install.sh /cni-install.sh
 COPY plugins/cilium-cni/cni-uninstall.sh /cni-uninstall.sh
+COPY liveness-check.sh /liveness-check.sh
 COPY contrib/packaging/docker/init-container.sh /init-container.sh
 WORKDIR /root
 RUN groupadd -f cilium \

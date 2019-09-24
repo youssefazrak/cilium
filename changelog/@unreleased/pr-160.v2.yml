@@ -1,0 +1,6 @@
+type: improvement
+improvement:
+  description: |
+    upgrade k8s application to 1.28.0 and use the new logging field
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/160

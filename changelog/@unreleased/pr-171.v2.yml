@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Put correct mountPath in the manifest file
+  links:
+  - https://github.palantir.build/deployability/cilium/pull/171
