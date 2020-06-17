@@ -3,7 +3,7 @@ tasks-config-providers:
     - https://publish.artifactory.palantir.build/artifactory/internal-dist-release/{{GroupPath}}/{{Product}}/{{Version}}/{{Product}}-{{Version}}.yml
   providers:
     - locator:
-        id: com.palantir.di-godel-config:di-godel-config:1.10.0
+        id: com.palantir.di-godel-config:di-godel-config:2.17.2
 plugins:
   resolvers:
     - "https://palantir.bintray.com/releases/{{GroupPath}}/{{Product}}/{{Version}}/{{Product}}-{{Version}}-{{OS}}-{{Arch}}.tgz"
