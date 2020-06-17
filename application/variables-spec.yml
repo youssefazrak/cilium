@@ -5,7 +5,7 @@ infrastructure-instance-class:
     CiliumOperatorMemoryLimits: 700Mi
 
     # cilium-agent
-    CiliumAgentCPURequests: 300m
+    CiliumAgentCPURequests: 100m
     CiliumAgentMemoryLimits: 375Mi
     MaxUnavailable: 2
 
