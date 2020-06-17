@@ -373,7 +373,7 @@ spec:
               name: cilium-run
           resources:
             requests:
-              cpu: 300m
+              cpu: 50m
             limits:
               cpu: 1
               memory: 100Mi
