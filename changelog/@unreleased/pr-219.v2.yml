@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: upgrade vault-cert-fetch to 2.37.0
+  links:
+  - https://github.palantir.build/deployability-forks/cilium/pull/219

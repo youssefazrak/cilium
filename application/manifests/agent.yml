@@ -1,6 +1,6 @@
 {{ $kubeSystemNamespace := "kube-system" -}}
 {{ $vaultCertFetchOutputDir := "/etc/vault-cert-fetch-output" -}}
-{{ $vaultCertFetchVersion := "2.36.0" -}}
+{{ $vaultCertFetchVersion := "2.37.0" -}}
 {{ $kubeconfigDir := "/var/conf" }}
 
 ---
