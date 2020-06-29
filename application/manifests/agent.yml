@@ -193,6 +193,7 @@ spec:
             - --tofqdns-dns-reject-response-code=nameError
             - --bpf-policy-map-max=49152
             - --enable-k8s-endpoint-slice=false
+            - --iptables-lock-timeout=30s
           env:
             - name: K8S_NODE_NAME
               valueFrom:
