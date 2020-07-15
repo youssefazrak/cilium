@@ -46,6 +46,16 @@ run:
   #  - ".*\\.my\\.go$"
   #  - lib/bad.go
 
+# all available settings of specific linters
+linters-settings:
+  misspell:
+    # Correct spellings using locale preferences for US or UK.
+    # Default is to use a neutral variety of English.
+    # Setting locale to US will correct the British spelling of 'colour' to 'color'.
+    # locale: US
+    ignore-words:
+      - rela # This is for elf.SHT_RELA
+
 issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
@@ -61,21 +71,22 @@ linters:
     - gofmt
     - govet
     - ineffassign
+    - misspell
     - staticcheck
+    - varcheck
 
 # To enable later if makes sense
-#    - goimports
 #    - deadcode
 #    - errcheck
+#    - gocyclo
+#    - goimports
 #    - golint
+#    - gosec
 #    - gosimple
-#    - structcheck
-#    - typecheck
-#    - unused
-#    - varcheck
+#    - lll
 #    - maligned
 #    - misspell
 #    - prealloc
-#    - gocyclo
-#    - lll
-#    - gosec
+#    - structcheck
+#    - typecheck
+#    - unused

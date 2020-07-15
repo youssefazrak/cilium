@@ -29,8 +29,11 @@ Prerequisites
 * All nodes must have a unique IP address assigned them. Node IPs of clusters
   being connected together may not conflict with each other.
 
-* Cilium must be configured to use etcd as the kvstore. Consul is not supported
-  by cluster mesh at this point.
+* Cilium must be configured to use etcd as the kvstore, along with the identity
+  allocation mode (``global.identityAllocationMode``). With the identity
+  allocation mode set to ``kvstore``, this allows direct etcd connections,
+  identity propagation across the clusters, and enables cross-cluster policy
+  functionality. Consul is not currently supported with cluster mesh.
 
 * It is highly recommended to use a TLS protected etcd cluster with Cilium. The
   server certificate of etcd must whitelist the host name ``*.mesh.cilium.io``.
@@ -293,7 +296,7 @@ this command inside any Cilium pod in any cluster:
 
 .. code:: bash
 
-    $ kubectl -n kube-system exec -ti cilium-g6btl cilium node list
+    $ kubectl -n kube-system exec -ti cilium-g6btl -- cilium node list
     Name                                                   IPv4 Address    Endpoint CIDR   IPv6 Address   Endpoint CIDR
     cluster5/ip-172-0-117-60.us-west-2.compute.internal    172.0.117.60    10.2.2.0/24     <nil>          f00d::a02:200:0:0/112
     cluster5/ip-172-0-186-231.us-west-2.compute.internal   172.0.186.231   10.2.3.0/24     <nil>          f00d::a02:300:0:0/112
@@ -306,7 +309,7 @@ this command inside any Cilium pod in any cluster:
 
 .. code:: bash
 
-    $ kubectl exec -ti pod-cluster5-xxx curl <pod-ip-cluster7>
+    $ kubectl exec -ti pod-cluster5-xxx -- curl <pod-ip-cluster7>
     [...]
 
 Load-balancing with Global Services
@@ -429,7 +432,7 @@ Control Plane Connectivity
       consisting of the IP to reach the remote etcd as well as the required
       certificates to connect to that etcd.
 
-    * Run a ``kubectl exec -ti [...] bash`` in one of the Cilium pods and check
+    * Run a ``kubectl exec -ti [...] -- bash`` in one of the Cilium pods and check
       the contents of the directory ``/var/lib/cilium/clustermesh/``. It must
       contain a configuration file for each remote cluster along with all the
       required SSL certificates and keys. The filenames must match the cluster

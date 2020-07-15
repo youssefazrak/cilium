@@ -46,10 +46,9 @@ import (
 
 const (
 	// KubectlCmd Kubernetes controller command
-	KubectlCmd      = "kubectl"
-	manifestsPath   = "k8sT/manifests/"
-	descriptorsPath = "../examples/kubernetes"
-	kubeDNSLabel    = "k8s-app=kube-dns"
+	KubectlCmd    = "kubectl"
+	manifestsPath = "k8sT/manifests/"
+	kubeDNSLabel  = "k8s-app=kube-dns"
 
 	// DNSHelperTimeout is a predefined timeout value for K8s DNS commands. It
 	// must be larger than 5 minutes because kubedns has a hardcoded resync
@@ -1692,7 +1691,7 @@ func (kub *Kubectl) validateServicePlumbingInCiliumPod(fullName, ciliumPod strin
 	return nil
 }
 
-// ValidateServicePlumbing ensures that a service in a namespace sucessfully
+// ValidateServicePlumbing ensures that a service in a namespace successfully
 // plumbed by all Cilium pods in the cluster:
 // - The service and endpoints are found in `cilium service list`
 // - The service and endpoints are found in `cilium bpf lb list`

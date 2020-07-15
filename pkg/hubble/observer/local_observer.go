@@ -33,6 +33,7 @@ import (
 	"github.com/cilium/cilium/pkg/hubble/observer/observeroption"
 	"github.com/cilium/cilium/pkg/hubble/parser"
 	parserErrors "github.com/cilium/cilium/pkg/hubble/parser/errors"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -153,7 +154,7 @@ nextEvent:
 			}
 		}
 
-		flow, err := decodeFlow(s.payloadParser, pl)
+		ev, err := s.payloadParser.Decode(pl)
 		if err != nil {
 			if !parserErrors.IsErrInvalidType(err) {
 				s.log.WithError(err).WithField("data", pl.Data).Debug("failed to decode payload")
@@ -161,24 +162,23 @@ nextEvent:
 			continue
 		}
 
-		for _, f := range s.opts.OnDecodedFlow {
-			stop, err := f.OnDecodedFlow(ctx, flow)
-			if err != nil {
-				s.log.WithError(err).WithField("data", pl.Data).Info("failed in OnDecodedFlow")
+		if flow, ok := ev.Event.(*flowpb.Flow); ok {
+			for _, f := range s.opts.OnDecodedFlow {
+				stop, err := f.OnDecodedFlow(ctx, flow)
+				if err != nil {
+					s.log.WithError(err).WithField("data", pl.Data).Info("failed in OnDecodedFlow")
+				}
+				if stop {
+					continue nextEvent
+				}
 			}
-			if stop {
-				continue nextEvent
-			}
+
+			atomic.AddUint64(&s.numObservedFlows, 1)
+			// FIXME: Convert metrics into an OnDecodedFlow function
+			metrics.ProcessFlow(flow)
 		}
 
-		atomic.AddUint64(&s.numObservedFlows, 1)
-		// FIXME: Convert metrics into an OnDecodedFlow function
-		metrics.ProcessFlow(flow)
-
-		s.GetRingBuffer().Write(&v1.Event{
-			Timestamp: pl.Time,
-			Event:     flow,
-		})
+		s.GetRingBuffer().Write(ev)
 	}
 	close(s.GetStopped())
 }
@@ -287,7 +287,7 @@ func (s *LocalObserverServer) GetFlows(
 
 nextFlow:
 	for ; ; i++ {
-		flow, err := flowsReader.Next(ctx)
+		resp, err := flowsReader.Next(ctx)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -296,7 +296,7 @@ nextFlow:
 		}
 
 		for _, f := range s.opts.OnFlowDelivery {
-			stop, err := f.OnFlowDelivery(ctx, flow)
+			stop, err := f.OnFlowDelivery(ctx, resp.GetFlow())
 			if err != nil {
 				return err
 			}
@@ -305,13 +305,7 @@ nextFlow:
 			}
 		}
 
-		err = server.Send(&observerpb.GetFlowsResponse{
-			Time:     flow.GetTime(),
-			NodeName: flow.GetNodeName(),
-			ResponseTypes: &observerpb.GetFlowsResponse_Flow{
-				Flow: flow,
-			},
-		})
+		err = server.Send(resp)
 		if err != nil {
 			return err
 		}
@@ -334,19 +328,8 @@ func logFilters(filters []*flowpb.FlowFilter) string {
 	return "{" + strings.Join(s, ",") + "}"
 }
 
-func decodeFlow(payloadParser *parser.Parser, pl *flowpb.Payload) (*flowpb.Flow, error) {
-	// TODO: Pool these instead of allocating new flows each time.
-	f := &flowpb.Flow{}
-	err := payloadParser.Decode(pl, f)
-	if err != nil {
-		return nil, err
-	}
-
-	return f, nil
-}
-
 // flowsReader reads flows using a RingReader. It applies the flow request
-// criterias (blacklist, whitelist, follow, ...) before returning flows.
+// criteria (blacklist, whitelist, follow, ...) before returning flows.
 type flowsReader struct {
 	ringReader           *container.RingReader
 	whitelist, blacklist filters.FilterFuncs
@@ -357,7 +340,7 @@ type flowsReader struct {
 }
 
 // newFlowsReader creates a new flowsReader that uses the given RingReader to
-// read through the ring buffer. Only flows that match the request criterias
+// read through the ring buffer. Only flows that match the request criteria
 // are returned.
 func newFlowsReader(r *container.RingReader, req *observerpb.GetFlowsRequest, log logrus.FieldLogger, whitelist, blacklist filters.FilterFuncs) (*flowsReader, error) {
 	log.WithFields(logrus.Fields{
@@ -388,8 +371,8 @@ func newFlowsReader(r *container.RingReader, req *observerpb.GetFlowsRequest, lo
 	return reader, nil
 }
 
-// Next returns the next flow that matches the request criterias.
-func (r *flowsReader) Next(ctx context.Context) (*flowpb.Flow, error) {
+// Next returns the next flow that matches the request criteria.
+func (r *flowsReader) Next(ctx context.Context) (*observerpb.GetFlowsResponse, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -428,10 +411,27 @@ func (r *flowsReader) Next(ctx context.Context) (*flowpb.Flow, error) {
 				continue
 			}
 		}
-		flow, ok := e.Event.(*flowpb.Flow)
-		if ok && filters.Apply(r.whitelist, r.blacklist, e) {
-			r.flowsCount++
-			return flow, nil
+
+		switch ev := e.Event.(type) {
+		case *flowpb.Flow:
+			if filters.Apply(r.whitelist, r.blacklist, e) {
+				r.flowsCount++
+				return &observerpb.GetFlowsResponse{
+					Time:     ev.GetTime(),
+					NodeName: ev.GetNodeName(),
+					ResponseTypes: &observerpb.GetFlowsResponse_Flow{
+						Flow: ev,
+					},
+				}, nil
+			}
+		case *flowpb.LostEvent:
+			return &observerpb.GetFlowsResponse{
+				Time:     e.Timestamp,
+				NodeName: nodeTypes.GetName(),
+				ResponseTypes: &observerpb.GetFlowsResponse_LostEvents{
+					LostEvents: ev,
+				},
+			}, nil
 		}
 	}
 }

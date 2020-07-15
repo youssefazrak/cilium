@@ -16,6 +16,7 @@ package parser
 
 import (
 	pb "github.com/cilium/cilium/api/v1/flow"
+	v1 "github.com/cilium/cilium/pkg/hubble/api/v1"
 	"github.com/cilium/cilium/pkg/hubble/parser/errors"
 	"github.com/cilium/cilium/pkg/hubble/parser/getters"
 	"github.com/cilium/cilium/pkg/hubble/parser/options"
@@ -23,6 +24,7 @@ import (
 	"github.com/cilium/cilium/pkg/hubble/parser/threefour"
 	monitorAPI "github.com/cilium/cilium/pkg/monitor/api"
 
+	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/sirupsen/logrus"
 )
 
@@ -59,21 +61,52 @@ func New(
 	}, nil
 }
 
-// Decode decodes the data from 'payload' into 'decoded'
-func (p *Parser) Decode(payload *pb.Payload, decoded *pb.Flow) error {
-	if payload == nil || len(payload.Data) == 0 {
-		return errors.ErrEmptyData
+// Decode decodes a cilium monitor 'payload' and returns a v1.Event with
+// the Event field populated.
+func (p *Parser) Decode(payload *pb.Payload) (*v1.Event, error) {
+	if payload == nil {
+		return nil, errors.ErrEmptyData
 	}
 
-	eventType := payload.Data[0]
-	switch eventType {
-	case monitorAPI.MessageTypeDrop,
-		monitorAPI.MessageTypeTrace,
-		monitorAPI.MessageTypePolicyVerdict:
-		return p.l34.Decode(payload, decoded)
-	case monitorAPI.MessageTypeAccessLog:
-		return p.l7.Decode(payload, decoded)
+	// TODO: Pool decoded flows instead of allocating new objects each time.
+	ev := &v1.Event{
+		Timestamp: payload.Time,
+	}
+
+	switch payload.Type {
+	case pb.EventType_EventSample:
+		if len(payload.Data) == 0 {
+			return nil, errors.ErrEmptyData
+		}
+		eventType := payload.Data[0]
+		switch eventType {
+		case monitorAPI.MessageTypeDrop,
+			monitorAPI.MessageTypeTrace,
+			monitorAPI.MessageTypePolicyVerdict:
+			ev.Event = &pb.Flow{}
+			if err := p.l34.Decode(payload, ev.Event.(*pb.Flow)); err != nil {
+				return nil, err
+			}
+			return ev, nil
+		case monitorAPI.MessageTypeAccessLog:
+			ev.Event = &pb.Flow{}
+			if err := p.l7.Decode(payload, ev.Event.(*pb.Flow)); err != nil {
+				return nil, err
+			}
+			return ev, nil
+		default:
+			return nil, errors.NewErrInvalidType(eventType)
+		}
+	case pb.EventType_RecordLost:
+		ev.Event = &pb.LostEvent{
+			Source:        pb.LostEventSource_PERF_EVENT_RING_BUFFER,
+			NumEventsLost: payload.Lost,
+			Cpu: &wrappers.Int32Value{
+				Value: payload.CPU,
+			},
+		}
+		return ev, nil
 	default:
-		return errors.NewErrInvalidType(eventType)
+		return nil, errors.ErrUnknownPerfEvent
 	}
 }

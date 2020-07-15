@@ -331,6 +331,12 @@ The following metrics have been renamed:
 * ``ipam_cilium_operator_api_duration_seconds`` to ``cilium_operator_ec2_api_duration_seconds``
 * ``ipam_cilium_operator_api_rate_limit_duration_seconds`` to ``cilium_operator_ec2_api_rate_limit_duration_seconds``
 
+New Metrics
+~~~~~~~~~~~
+
+  * ``cilium_kvstore_quorum_errors_total`` counts the number of kvstore quorum
+    loss errors. The label ``error`` indicates the type of error.
+
 .. _1.8_upgrade_notes:
 
 1.8 Upgrade Notes

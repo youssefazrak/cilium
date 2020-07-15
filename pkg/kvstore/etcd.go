@@ -262,6 +262,9 @@ type etcdClient struct {
 	config     *client.Config
 	configPath string
 
+	// statusCheckErrors receives all errors reported by statusChecker()
+	statusCheckErrors chan error
+
 	// protects sessions from concurrent access
 	lock.RWMutex
 	session     *concurrency.Session
@@ -280,6 +283,8 @@ type etcdClient struct {
 	extraOptions *ExtraOptions
 
 	limiter *rate.Limiter
+
+	lastHeartbeat time.Time
 }
 
 func (e *etcdClient) getLogger() *logrus.Entry {
@@ -315,6 +320,11 @@ func (e *etcdClient) GetSessionLeaseID() client.LeaseID {
 	l := e.session.Lease()
 	e.RWMutex.RUnlock()
 	return l
+}
+
+// StatusCheckErrors returns a channel which receives status check errors
+func (e *etcdClient) StatusCheckErrors() <-chan error {
+	return e.statusCheckErrors
 }
 
 // GetLockSessionLeaseID returns the current lease ID for the lock session.
@@ -382,6 +392,12 @@ func (e *etcdClient) waitForInitLock(ctx context.Context) <-chan bool {
 			default:
 			}
 
+			if e.extraOptions != nil && e.extraOptions.NoLockQuorumCheck {
+				initLockSucceeded <- true
+				close(initLockSucceeded)
+				return
+			}
+
 			// Generate a random number so that we can acquire a lock even
 			// if other agents are killed while locking this path.
 			randNumber := strconv.FormatUint(randGen.Uint64(), 16)
@@ -410,6 +426,7 @@ func (e *etcdClient) isConnectedAndHasQuorum(ctx context.Context) error {
 	case <-e.firstSession:
 	// Timeout while waiting for initial connection, no success
 	case <-ctxTimeout.Done():
+		recordQuorumError("timeout")
 		return fmt.Errorf("timeout while waiting for initial connection")
 	}
 
@@ -421,6 +438,7 @@ func (e *etcdClient) isConnectedAndHasQuorum(ctx context.Context) error {
 	select {
 	// Catch disconnect event, no success
 	case <-ch:
+		recordQuorumError("session timeout")
 		return fmt.Errorf("etcd session ended")
 	// wait for initial lock to succeed
 	case success := <-initLockSucceeded:
@@ -428,6 +446,7 @@ func (e *etcdClient) isConnectedAndHasQuorum(ctx context.Context) error {
 			return nil
 		}
 
+		recordQuorumError("lock timeout")
 		return fmt.Errorf("timeout while attempting to acquire lock")
 	}
 }
@@ -579,10 +598,11 @@ func connectEtcdClient(ctx context.Context, config *client.Config, cfgPath strin
 		lockSession:          &ls,
 		firstSession:         firstSession,
 		controllers:          controller.NewManager(),
-		latestStatusSnapshot: "No connection to etcd",
+		latestStatusSnapshot: "Waiting for initial connection to be established",
 		stopStatusChecker:    make(chan struct{}),
 		extraOptions:         opts,
 		limiter:              rate.NewLimiter(rate.Limit(rateLimit), rateLimit),
+		statusCheckErrors:    make(chan error, 128),
 	}
 
 	// wait for session to be created also in parallel
@@ -605,6 +625,32 @@ func connectEtcdClient(ctx context.Context, config *client.Config, cfgPath strin
 
 		if err := ec.checkMinVersion(ctx); err != nil {
 			errChan <- fmt.Errorf("unable to validate etcd version: %s", err)
+		}
+	}()
+
+	go func() {
+		watcher := ec.ListAndWatch(ctx, HeartbeatPath, HeartbeatPath, 128)
+
+		for {
+			select {
+			case _, ok := <-watcher.Events:
+				if !ok {
+					log.Debug("Stopping heartbeat watcher")
+					watcher.Stop()
+					return
+				}
+
+				// It is tempting to compare against the
+				// heartbeat value stored in the key. However,
+				// this would require the time on all nodes to
+				// be synchronized. Instead, assume current
+				// time and print the heartbeat value in debug
+				// messages for troubleshooting
+				ec.RWMutex.Lock()
+				ec.lastHeartbeat = time.Now()
+				ec.RWMutex.Unlock()
+				log.Debug("Received update notification of heartbeat")
+			}
 		}
 	}()
 
@@ -915,7 +961,13 @@ func (e *etcdClient) statusChecker() {
 		e.RWMutex.RLock()
 		sessionLeaseID := e.session.Lease()
 		lockSessionLeaseID := e.lockSession.Lease()
+		lastHeartbeat := e.lastHeartbeat
 		e.RWMutex.RUnlock()
+
+		if heartbeatDelta := time.Since(lastHeartbeat); !lastHeartbeat.IsZero() && heartbeatDelta > 2*HeartbeatWriteInterval {
+			recordQuorumError("no event received")
+			quorumError = fmt.Errorf("%s since last heartbeat update has been received", heartbeatDelta)
+		}
 
 		quorumString := "true"
 		if quorumError != nil {
@@ -927,23 +979,29 @@ func (e *etcdClient) statusChecker() {
 		}
 
 		e.statusLock.Lock()
-		e.latestStatusSnapshot = fmt.Sprintf("etcd: %d/%d connected, lease-ID=%x, lock lease-ID=%x, has-quorum=%s: %s",
-			ok, len(endpoints), sessionLeaseID, lockSessionLeaseID, quorumString, strings.Join(newStatus, "; "))
 
 		switch {
 		case consecutiveQuorumErrors > consecutiveQuorumErrorsThreshold:
 			e.latestErrorStatus = fmt.Errorf("quorum check failed %d times in a row: %s",
 				consecutiveQuorumErrors, quorumError)
+			e.latestStatusSnapshot = e.latestErrorStatus.Error()
 		case len(endpoints) > 0 && ok == 0:
 			e.latestErrorStatus = fmt.Errorf("not able to connect to any etcd endpoints")
+			e.latestStatusSnapshot = e.latestErrorStatus.Error()
 		default:
 			e.latestErrorStatus = nil
+			e.latestStatusSnapshot = fmt.Sprintf("etcd: %d/%d connected, lease-ID=%x, lock lease-ID=%x, has-quorum=%s: %s",
+				ok, len(endpoints), sessionLeaseID, lockSessionLeaseID, quorumString, strings.Join(newStatus, "; "))
 		}
 
 		e.statusLock.Unlock()
+		if e.latestErrorStatus != nil {
+			e.statusCheckErrors <- e.latestErrorStatus
+		}
 
 		select {
 		case <-e.stopStatusChecker:
+			close(e.statusCheckErrors)
 			return
 		case <-time.After(e.extraOptions.StatusCheckInterval(allConnected)):
 		}
@@ -1433,9 +1491,15 @@ func (e *etcdClient) Close() {
 	}
 	e.RLock()
 	defer e.RUnlock()
-	e.lockSession.Close()
-	e.session.Close()
-	e.client.Close()
+	if err := e.lockSession.Close(); err != nil {
+		e.getLogger().WithError(err).Warning("Failed to revoke lock session while closing etcd client")
+	}
+	if err := e.session.Close(); err != nil {
+		e.getLogger().WithError(err).Warning("Failed to revoke main session while closing etcd client")
+	}
+	if err := e.client.Close(); err != nil {
+		e.getLogger().WithError(err).Warning("Failed to close etcd client")
+	}
 }
 
 // GetCapabilities returns the capabilities of the backend
