@@ -28,7 +28,7 @@ RUN make LOCKDEBUG=$LOCKDEBUG PKG_BUILD=1 V=$V LIBNETWORK_PLUGIN=$LIBNETWORK_PLU
     SKIP_DOCS=true DESTDIR=/tmp/install clean-container build-container install-container
 
 FROM docker.io/library/alpine:3.9.3 as planer
-ARG PLANER_VERSION=0.12.4
+ARG PLANER_VERSION=0.14.0
 ADD https://artifactory.palantir.build/artifactory/internal-dist/com/palantir/deployability/planer/$PLANER_VERSION/planer-$PLANER_VERSION-linux-amd64.tgz!/planer /usr/local/bin
 ADD planer /etc/planer
 RUN chmod +x /usr/local/bin/*
