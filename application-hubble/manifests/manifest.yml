@@ -172,11 +172,18 @@ spec:
             memory: 350Mi
       - name: isovalent-hubble-fgs
         image: docker.external.palantir.build/deployability/isovalent/hubble-fgs:{{ $hubbleFgsVersion }}
+        command:
+        - /usr/bin/hubble-fgs
+        args:
+        - --btf=/btf/kernel.btf
         securityContext:
           privileged: true
         volumeMounts:
         - mountPath: "/var/run/hubble-fgs"
           name: fgs
+        - mountPath: "/btf/"
+          name: btf
+          readOnly: true
         - mountPath: "/procRoot/"
           name: fgs-proc
           readOnly: true
@@ -227,6 +234,10 @@ spec:
           path: /proc/
           type: Directory
         name: fgs-proc
+      - hostPath:
+          path: /etc/hubble/btf
+          type: Directory
+        name: btf
       # Mount /var/run so that hubble can access containerd CRI endpoint /run/containerd/containerd.sock
       - hostPath:
           path: /run/containerd
