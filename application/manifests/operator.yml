@@ -199,7 +199,7 @@ spec:
       annotations:
         ad.datadoghq.com/cilium-operator.check_names: |
           [
-            "prometheus"
+            "openmetrics"
           ]
         ad.datadoghq.com/cilium-operator.init_configs: |
           [{}]
@@ -214,7 +214,8 @@ spec:
               "metrics": [
                 "*"
               ],
-              "send_histograms_buckets": true
+              "send_histograms_buckets": false,
+              "send_distribution_buckets": false
             }
           ]
         com.palantir.k8sapplications/hostports: |

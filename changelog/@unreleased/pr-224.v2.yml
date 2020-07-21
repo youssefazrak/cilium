@@ -1,0 +1,5 @@
+type: improvement
+improvement:
+  description: Swap to openmetrics
+  links:
+  - https://github.palantir.build/deployability-forks/cilium/pull/224

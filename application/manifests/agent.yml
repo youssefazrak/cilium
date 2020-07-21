@@ -23,7 +23,7 @@ spec:
       annotations:
         ad.datadoghq.com/cilium-agent.check_names: |
           [
-            "prometheus"
+            "openmetrics"
           ]
         ad.datadoghq.com/cilium-agent.init_configs: |
           [{}]
@@ -67,7 +67,8 @@ spec:
                 "cilium_policy_l7_total",
                 "cilium_triggers_policy_update_total"
               ],
-              "send_histograms_buckets": true
+              "send_histograms_buckets": false,
+              "send_distribution_buckets": false
             }
           ]
         com.palantir.rubix.pod/pod-key-pair-v2: "{}"
