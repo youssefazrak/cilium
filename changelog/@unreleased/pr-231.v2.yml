@@ -1,0 +1,6 @@
+type: improvement
+improvement:
+  description: |
+    Add more binaries to exclude from hubble inspection
+  links:
+  - https://github.palantir.build/deployability-forks/cilium/pull/231
