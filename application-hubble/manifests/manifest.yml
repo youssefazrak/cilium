@@ -121,7 +121,7 @@ spec:
       containers:
       - args:
         - -c
-        - "source /var/userdata/userdata.conf; source /var/userdata/instance.conf; export HUBBLE_NODE_NAME=${INSTANCE_ID}-${NODETYPE}.${INSTANCE_AZ}.${CLUSTER_NAME}.${COLOR};/usr/bin/hubble serve --export-directory=/var/hubble/export --port-translation=false --cri-endpoint /hostrun/containerd.sock --enable-process-visibility {{ $fqdnExcludeArgs }} {{ $processBinaryExcludeArgs }}"
+        - "source /var/userdata/userdata.conf; source /var/userdata/instance.conf; export HUBBLE_NODE_NAME=${INSTANCE_ID}-${NODETYPE}.${INSTANCE_AZ}.${CLUSTER_NAME}.${COLOR};/usr/bin/hubble serve --export-directory=/var/hubble/export --export-frequency-file-creation=2m --port-translation=false --cri-endpoint /hostrun/containerd.sock --enable-process-visibility {{ $fqdnExcludeArgs }} {{ $processBinaryExcludeArgs }}"
         command:
         - /bin/sh
         env:
