@@ -9,14 +9,12 @@ kind: DaemonSet
 metadata:
   labels:
     rubix-app: cilium-agent
-    kubernetes.io/cluster-service: "true"
   name: cilium-agent
   namespace: {{ $kubeSystemNamespace }}
 spec:
   selector:
     matchLabels:
       rubix-app: cilium-agent
-      kubernetes.io/cluster-service: "true"
   template:
     metadata:
       name: cilium-agent
@@ -132,19 +130,8 @@ spec:
               9090
             ]
           }
-        scheduler.alpha.kubernetes.io/critical-pod: ""
-        scheduler.alpha.kubernetes.io/tolerations: |
-          [
-            {
-              "key": "dedicated",
-              "operator": "Equal",
-              "value": "master",
-              "effect": "NoSchedule"
-            }
-          ]
       labels:
         rubix-app: cilium-agent
-        kubernetes.io/cluster-service: "true"
     spec:
       serviceAccount: cilium
       tolerations:
