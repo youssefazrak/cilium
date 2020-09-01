@@ -611,6 +611,9 @@ func NewDaemon(ctx context.Context, epMgr *endpointmanager.EndpointManager, dp d
 		}
 	}
 
+	// Given BPF datapath is up, we can now remove old maps from version upgrade.
+	d.deleteMapsAfterUpgrade()
+
 	if err := d.syncEndpointsAndHostIPs(); err != nil {
 		return nil, nil, err
 	}

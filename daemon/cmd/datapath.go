@@ -302,15 +302,13 @@ func (d *Daemon) syncEndpointsAndHostIPs() error {
 	return nil
 }
 
-// initMaps opens all BPF maps (and creates them if they do not exist). This
-// must be done *before* any operations which read BPF maps, especially
-// restoring endpoints and services.
-func (d *Daemon) initMaps() error {
+// deleteMapsAfterUpgrade removes all leftover BPF maps which might be from
+// an older version of Cilium but not used anymore in the current version.
+func (d *Daemon) deleteMapsAfterUpgrade() {
 	if option.Config.DryMode {
-		return nil
+		return
 	}
 
-	// Delete old maps if left over from an upgrade.
 	// TODO: Remove policy map when Cilium 1.8 is the oldest supported release.
 	for _, name := range []string{"cilium_policy"} {
 		path := bpf.MapPath(name)
@@ -319,6 +317,15 @@ func (d *Daemon) initMaps() error {
 				log.Infof("removed legacy map file %s", path)
 			}
 		}
+	}
+}
+
+// initMaps opens all BPF maps (and creates them if they do not exist). This
+// must be done *before* any operations which read BPF maps, especially
+// restoring endpoints and services.
+func (d *Daemon) initMaps() error {
+	if option.Config.DryMode {
+		return nil
 	}
 
 	if _, err := lxcmap.LXCMap.OpenOrCreate(); err != nil {
