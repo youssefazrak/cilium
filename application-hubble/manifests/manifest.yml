@@ -168,7 +168,6 @@ spec:
             cpu: 1m
             memory: 50m
           limits:
-            cpu: 1
             memory: 350Mi
       - name: isovalent-hubble-fgs
         image: docker.external.palantir.build/deployability/isovalent/hubble-fgs:{{ $hubbleFgsVersion }}
@@ -189,7 +188,7 @@ spec:
           readOnly: true
       - args:
         - -c
-        - 'source /var/userdata/instance.conf; /usr/bin/hubble-s3 /var/hubble/export {{ .Logging.Central.Bucket.Name }} --kms --kms-id {{ .Logging.Central.Bucket.EncryptionKeyID }} --object-template {{if eq .DeploymentType "production"}}flows{{else}}dev-flows{{end}}/AWSLogs/{{ .AccountID }}/{{ "{{.YYYY}}/{{.MM}}/{{.DD}}/${INSTANCE_ID}/flows-{{.HH}}-{{.Source}}" }} --acl bucket-owner-full-control'
+        - 'source /var/userdata/instance.conf; /usr/bin/hubble-s3 /var/hubble/export {{ .Logging.Central.Bucket.Name }} --kms --kms-id {{ .Logging.Central.Bucket.EncryptionKeyID }} --object-template {{if eq .DeploymentType "production"}}flows{{else}}dev-flows{{end}}/AWSLogs/{{ .AccountID }}/{{ "{{.YYYY}}/{{.MM}}/{{.DD}}/${INSTANCE_ID}/flows-{{.HH}}-{{.Source}}" }} --acl bucket-owner-full-control --concurrent-limit=30'
         command:
         - /bin/sh
         env:
@@ -208,7 +207,6 @@ spec:
             cpu: 1m
             memory: 50m
           limits:
-            cpu: 1
             memory: 350Mi
       dnsPolicy: ClusterFirst
       hostNetwork: true
