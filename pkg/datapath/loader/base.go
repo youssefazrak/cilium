@@ -128,11 +128,11 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 
 	args = make([]string, initArgMax)
 
-	sysSettings := []setting{
-		{"net.core.bpf_jit_enable", "1", true},
-		{"net.ipv4.conf.all.rp_filter", "0", false},
-		{"kernel.unprivileged_bpf_disabled", "1", true},
-		{"kernel.timer_migration", "0", true},
+	sysSettings := []sysctl.Setting{
+		{Name: "net.core.bpf_jit_enable", Val: "1", IgnoreErr: true},
+		{Name: "net.ipv4.conf.all.rp_filter", Val: "0", IgnoreErr: false},
+		{Name: "kernel.unprivileged_bpf_disabled", Val: "1", IgnoreErr: true},
+		{Name: "kernel.timer_migration", Val: "0", IgnoreErr: true},
 	}
 
 	// Lock so that endpoints cannot be built while we are compile base programs.
@@ -189,7 +189,7 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 		// interface (https://github.com/docker/libnetwork/issues/1720)
 		// Enable IPv6 for now
 		sysSettings = append(sysSettings,
-			setting{"net.ipv6.conf.all.disable_ipv6", "0", false})
+			sysctl.Setting{Name: "net.ipv6.conf.all.disable_ipv6", Val: "0", IgnoreErr: false})
 	} else {
 		args[initArgIPv6NodeIP] = "<nil>"
 	}
@@ -317,7 +317,7 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 	//
 	// We want to reproduce equivalent rules to ensure correct routing.
 	if option.Config.IPAM == ipamOption.IPAMENI {
-		sysSettings = append(sysSettings, setting{"net.ipv4.conf.eth0.rp_filter", "2", false})
+		sysSettings = append(sysSettings, sysctl.Setting{Name: "net.ipv4.conf.eth0.rp_filter", Val: "2", IgnoreErr: false})
 		if err := route.ReplaceRule(route.Rule{
 			Priority: linux_defaults.RulePriorityNodeport,
 			Mark:     linux_defaults.MarkMultinodeNodeport,
@@ -328,21 +328,7 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 		}
 	}
 
-	for _, s := range sysSettings {
-		log.WithFields(logrus.Fields{
-			logfields.SysParamName:  s.name,
-			logfields.SysParamValue: s.val,
-		}).Info("Setting sysctl")
-		if err := sysctl.Write(s.name, s.val); err != nil {
-			if !s.ignoreErr {
-				return fmt.Errorf("Failed to sysctl -w %s=%s: %s", s.name, s.val, err)
-			}
-			log.WithError(err).WithFields(logrus.Fields{
-				logfields.SysParamName:  s.name,
-				logfields.SysParamValue: s.val,
-			}).Warning("Failed to sysctl -w")
-		}
-	}
+	sysctl.ApplySettings(sysSettings)
 
 	for i, arg := range args {
 		if arg == "" {
