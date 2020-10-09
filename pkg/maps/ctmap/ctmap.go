@@ -254,6 +254,21 @@ type EmitCTEntryCBFunc func(srcIP, dstIP net.IP, srcPort, dstPort uint16, nextHd
 func doDumpEntries(m CtMap) (string, error) {
 	var buffer bytes.Buffer
 
+	var toRemSecs func(uint32) int64
+	if option.Config.ClockSource == option.ClockSourceKtime {
+		now, _ := bpf.GetMtime()
+		now = now / 1000000000
+		toRemSecs = func(t uint32) int64 {
+			return int64(t) - int64(now)
+		}
+	} else {
+		now, _ := bpf.GetJtime()
+		toRemSecs = func(t uint32) int64 {
+			diff := int64(t) - int64(now)
+			return (diff / int64(option.Config.KernelHz))
+		}
+	}
+
 	cb := func(k bpf.MapKey, v bpf.MapValue) {
 		// No need to deep copy as the values are used to create new strings
 		key := k.(CtKey)
@@ -261,7 +276,7 @@ func doDumpEntries(m CtMap) (string, error) {
 			return
 		}
 		value := v.(*CtEntry)
-		buffer.WriteString(value.String())
+		buffer.WriteString(value.RichString(toRemSecs))
 	}
 	// DumpWithCallback() must be called before buffer.String().
 	err := m.DumpWithCallback(cb)
