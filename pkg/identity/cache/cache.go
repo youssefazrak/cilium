@@ -207,8 +207,11 @@ func (m *CachingIdentityAllocator) LookupIdentity(ctx context.Context, lbls labe
 		return reservedIdentity
 	}
 
-	if identity := m.localIdentities.lookup(lbls); identity != nil {
-		return identity
+	// m.localIdentities can be nil if InitIdentityAllocator has not yet been completed
+	if m.localIdentities != nil {
+		if identity := m.localIdentities.lookup(lbls); identity != nil {
+			return identity
+		}
 	}
 
 	if !identity.RequiresGlobalIdentity(lbls) || m.IdentityAllocator == nil {
@@ -242,8 +245,11 @@ func (m *CachingIdentityAllocator) LookupIdentityByID(ctx context.Context, id id
 		return identity
 	}
 
-	if identity := m.localIdentities.lookupByID(id); identity != nil {
-		return identity
+	// m.localIdentities can be nil if InitIdentityAllocator has not yet been completed
+	if m.localIdentities != nil {
+		if identity := m.localIdentities.lookupByID(id); identity != nil {
+			return identity
+		}
 	}
 
 	if id.HasLocalScope() || m.IdentityAllocator == nil {
