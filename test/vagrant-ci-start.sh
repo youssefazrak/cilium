@@ -44,3 +44,5 @@ echo "labeling nodes"
 for i in $(seq 1 $K8S_NODES); do
     ${KUBECTL} label node k8s${i} cilium.io/ci-node=k8s${i} --overwrite
 done
+
+${KUBECTL} get nodes -o json
