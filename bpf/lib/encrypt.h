@@ -45,6 +45,8 @@ do_decrypt(struct __ctx_buff *ctx, __u16 proto)
 			protocol = ip4->protocol;
 			break;
 #endif
+		default:
+			return CTX_ACT_OK;
 		}
 
 		if (protocol == IPPROTO_ESP) {
@@ -56,16 +58,17 @@ do_decrypt(struct __ctx_buff *ctx, __u16 proto)
 			 * before IPSec can be processed mark as a HOST packet.
 			 */
 			ctx_change_type(ctx, PACKET_HOST);
-			return 0;
+			return CTX_ACT_OK;
 		}
 	}
-	return -ENOENT;
+	ctx->mark = 0;
+	return redirect(CILIUM_IFINDEX, 0);
 }
 #else
 static __always_inline int
 do_decrypt(struct __ctx_buff __maybe_unused *ctx, __u16 __maybe_unused proto)
 {
-	return -ENOENT;
+	return CTX_ACT_OK;
 }
 #endif /* ENABLE_IPSEC */
 #endif /* __LIB_ENCRYPT_H_ */

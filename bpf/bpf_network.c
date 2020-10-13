@@ -38,14 +38,11 @@ int from_network(struct __ctx_buff *ctx)
 	if (!validate_ethertype(ctx, &proto))
 		return CTX_ACT_OK;
 
-	ret = do_decrypt(ctx, proto);
-	if (!ret)
-		return CTX_ACT_OK;
-	ctx->mark = 0;
-	return redirect(CILIUM_IFINDEX, 0);
-#endif
-	/* Pass unknown traffic to the stack */
+	return do_decrypt(ctx, proto);
+#else
+	/* nop if IPSec is disabled */
 	return CTX_ACT_OK;
+#endif
 }
 
 BPF_LICENSE("GPL");
